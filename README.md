@@ -55,7 +55,7 @@ database.rules.json      Realtime Database rules
 android/ ios/            native apps
 docs/                    documentation
 .github/workflows/       the single build / import workflow (uploads are encrypted: see docs/APPS.md)
-tools/                   encrypt-zip.sh + the public key for encrypted uploads
+tools/                   encrypt-zip.sh + the public key for encrypted uploads, build-docs.py (docs/*.md -> the in-app docs pages)
 ```
 
 ## Credits and licence

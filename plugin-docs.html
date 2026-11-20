@@ -9,351 +9,1278 @@
   <script src="js/themeboot.js"></script>
 </head>
 <body>
+<!-- Generated from docs/PLUGINS.md by tools/build-docs.py: edit the Markdown file, not this page. -->
 <div class="shell">
   <header class="topbar"><a href="account.html#tab=plugins" class="icon-btn" aria-label="Back to plugins" data-icon="back"></a><h1 class="brand">Plugin docs</h1></header>
   <main class="doc-page">
-<p>Plugins are small JavaScript programs you write (or import) to change how QuickMessage looks and behaves on <em>your</em> device. They work with Developer mode off (Settings → Plugins); Developer mode only adds extras such as plugin logs. They are stored in this browser only. They never touch other people's devices.</p>
-
-<h2 id="unsandboxed">Unsandboxed plugins (extremely dangerous)</h2>
-<p style="border:2px solid #b91c1c;border-radius:8px;padding:.6rem"><strong>⛔ Having a plugin unsandboxed is EXTREMELY DANGEROUS.</strong> Normally a plugin runs in a locked box and only gets what its permissions allow. With <code>unsandboxed</code> the lock is removed: the plugin runs with the same power as the site itself. It can read all your messages and encryption keys, send messages as you, read what you type (including passwords), change settings and send everything to anyone. <strong>Do not run anything you do not trust completely with this permission, and never turn it on because someone online asked you to.</strong> You must type UNSANDBOXED to allow it, and it asks again whenever the plugin changes its permissions.</p>
-<p>Inside the plugin, <code>qm.permissions.sandboxed</code> is <code>false</code> and <code>qm.unsafe.window</code> / <code>qm.unsafe.document</code> reach the page. Prefer normal permissions whenever they are enough.</p>
-<h2 id="review">Permission review</h2>
-<p>When you switch a plugin on, or it asks for new permissions after an edit or update, the Plugins page shows every permission in plain words (most dangerous first, with a risk label) and the plugin stays off until you approve. The <em>Permissions</em> button shows this list at any time. A plugin can read its own list with <code>qm.permissions.list()</code> and <code>qm.permissions.has(name)</code> (no permission needed).</p>
-<h2 id="toc">Contents</h2>
+<nav class="doc-toc card"><strong>Contents</strong><ol><li><a href="#1-your-first-plugin-in-60-seconds">1. Your first plugin in 60 seconds</a></li><li><a href="#2-the-plugins-tab">2. The Plugins tab</a></li><li><a href="#3-how-plugins-run">3. How plugins run</a></li><li><a href="#4-permissions">4. Permissions</a></li><li><a href="#5-the-qm-api">5. The qm API</a></li><li><a href="#6-events">6. Events</a></li><li><a href="#7-styling">7. Styling</a></li><li><a href="#8-examples">8. Examples</a></li><li><a href="#9-plugin-files">9. Plugin files</a></li><li><a href="#10-versions-outdated-warnings-and-updates">10. Versions, outdated warnings and updates</a></li><li><a href="#11-limits">11. Limits</a></li><li><a href="#12-troubleshooting">12. Troubleshooting</a></li><li><a href="#13-what-changed-plugin-api-history">13. What changed (plugin API history)</a></li></ol></nav>
+<p>Plugins are small JavaScript programs you write (or import) to change how QuickMessage looks and behaves <strong>on your own device</strong>. They live in <strong>Settings → Plugins</strong>, work with Developer mode <strong>off</strong> (Developer mode only adds extras such as the plugin log), are stored in this browser only and never touch other people's devices.</p>
+<p>This file is the source of the in-app page <code>plugin-docs.html</code> (regenerated with <code>python3 tools/build-docs.py</code>). The <strong>Since</strong> columns are the site version that introduced a permission, call or event: when your plugin uses one, set its <code>minSite</code> to the highest version it needs, so older copies of the site show a clear "update the site" message instead of failing.</p>
+<h2 id="1-your-first-plugin-in-60-seconds">1. Your first plugin in 60 seconds</h2>
 <ol>
-<li><a href="#quick">Your first plugin in 60 seconds</a></li>
-<li><a href="#how">How plugins run (and what they cannot do)</a></li>
-<li><a href="#perms">Permissions</a></li>
-<li><a href="#api">The <code>qm</code> API, method by method</a></li>
-<li><a href="#events">Events</a></li>
-<li><a href="#css">Styling: useful CSS hooks</a></li>
-<li><a href="#ex">Complete examples</a></li>
-<li><a href="#file">Plugin files, importing, exporting, sharing</a></li>
-<li><a href="#ver">Versions, outdated warnings and updates</a></li>
-<li><a href="#limits">Limits</a></li>
-<li><a href="#trouble">Troubleshooting</a></li>
-<li><a href="#changes">What changed (plugin API history)</a></li>
+<li>Open <strong>Settings → Plugins</strong>.</li>
+<li>Press <strong>New plugin</strong>, pick the <strong>Hello (toast)</strong> starting point, give it a name and press <strong>Save</strong>.</li>
+<li>Switch the plugin on and approve its permissions. You see a toast "Hello from my plugin!".</li>
 </ol>
-
-<h2 id="quick">1. Your first plugin in 60 seconds</h2>
-<ol>
-<li>Open <strong>Settings → Plugins</strong> (no Developer mode needed).</li>
-<li>Press <strong>New plugin</strong>, pick the <em>Hello (toast)</em> starting point, give it a name and press <strong>Save</strong>.</li>
-<li>Switch the plugin on. You should see a toast saying "Hello from my plugin!".</li>
-</ol>
-<pre>await qm.toast('Hello from my plugin! Site ' + qm.version, 'success');
-qm.on('chat-open', () =&gt; qm.toast('You opened a chat'));</pre>
-<p>Your code is the body of an <code>async</code> function, so you can use <code>await</code> at the top level and <code>return</code> early. The variable <code>qm</code> is the only door to the site.</p>
-
-<h2 id="how">2. How plugins run</h2>
+<pre><code class="language-js">await qm.toast('Hello from my plugin! Site ' + qm.version, 'success');
+qm.on('chat-open', () =&gt; qm.toast('You opened a chat'));
+</code></pre>
+<p>Your code is the body of an <code>async</code> function, so you can use <code>await</code> at the top level and <code>return</code> early. The variable <code>qm</code> is the only door to the site. The editor offers a dozen starting points (restyle the site, message counter, find a message, slash commands, notes window, message menu, quick replies, call banner…).</p>
+<h2 id="2-the-plugins-tab">2. The Plugins tab</h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Where</th>
+<th>What</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Site version</strong> card</td>
+<td>Your site version and a check for a newer one.</td>
+</tr>
+<tr>
+<td><strong>Your plugins</strong></td>
+<td>One row per plugin with its on/off switch, status (running, crashed, outdated, blocked), a one-line permission summary (risk and groups), and buttons.</td>
+</tr>
+<tr>
+<td><strong>⚙ Settings</strong></td>
+<td>Only shown when the plugin describes its own settings (see <code>qm.settings</code>). Opens a form with Save and Reset to defaults.</td>
+</tr>
+<tr>
+<td><strong>Permissions</strong></td>
+<td>What it can do, in plain words, grouped (open / close each group, <em>Expand all</em> / <em>Collapse all</em>).</td>
+</tr>
+<tr>
+<td><strong>Edit</strong>, <strong>Export</strong>, <strong>Delete</strong>, <strong>Check update</strong></td>
+<td>Edit the code and permissions; save a <code>.qmplugin.json</code> file; remove the plugin together with its storage and settings; look for a newer version at its <code>updateUrl</code>.</td>
+</tr>
+<tr>
+<td><strong>New plugin</strong>, <strong>Import file</strong>, <strong>Import from URL</strong>, <strong>Update all</strong></td>
+<td>Add plugins. A new plugin always arrives <strong>switched off</strong> so you can read its permissions and code first.</td>
+</tr>
+<tr>
+<td><strong>Log</strong></td>
+<td>Only with Developer mode on: the last 100 lines of <code>qm.log</code> and errors. Hidden otherwise.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="permission-review">Permission review</h3>
+<p>When you switch a plugin on, or it asks for new permissions after an edit or an update, every permission is listed in plain words (most dangerous first, with a risk label) and the plugin stays <strong>off until you approve</strong>. Permissions are shown in groups: <strong>Look &amp; feel</strong>, <strong>Reading your chats</strong>, <strong>Writing &amp; sending</strong>, <strong>Your device &amp; sharing</strong>, <strong>Network &amp; control</strong>, <strong>Danger zone</strong>. Groups with high-risk entries start open. A plugin can read its own list with <code>qm.permissions.list()</code> and <code>qm.permissions.has(name)</code> (no permission needed).</p>
+<h2 id="3-how-plugins-run">3. How plugins run</h2>
 <ul>
-<li>Each enabled plugin runs in its own hidden <code>&lt;iframe sandbox="allow-scripts"&gt;</code>. Without <code>allow-same-origin</code> it cannot read the site, your login, your messages, cookies, <code>localStorage</code>, IndexedDB or Firebase.</li>
+<li>Each enabled plugin runs in its own hidden <code>&lt;iframe sandbox="allow-scripts"&gt;</code>. Without <code>allow-same-origin</code> it cannot read the site, your login, your messages, cookies, localStorage, IndexedDB or Firebase.</li>
 <li>A Content-Security-Policy inside the frame blocks every network request unless the plugin declares the <code>network</code> permission (then only <code>https:</code>).</li>
-<li>Everything a plugin does goes through <code>qm.*</code> calls, which the site checks against the permissions you ticked. A call without the permission fails with an error you can catch.</li>
-<li>A plugin that throws on start is marked <em>crashed</em> and its error is shown on the Plugins page; other plugins and the site keep working.</li>
-<li>Plugins run in the app shell, so they work on every page (chat list, chat, account, call). They do not run on a standalone page opened outside the shell.</li>
-<li><strong>Be careful what you install.</strong> Sandboxing protects the site from a plugin, but a plugin you allow to <em>read messages</em> and <em>contact other websites</em> can send what it reads anywhere. Read code before enabling it. The Plugins page labels each permission with its risk.</li>
+<li>Everything a plugin does goes through <code>qm.*</code> calls, which the site checks against the permissions you approved. A call without the permission fails with an error you can catch.</li>
+<li>A plugin that throws on start is marked <strong>crashed</strong> and its error is shown on the Plugins tab; other plugins and the site keep working. Errors in event handlers are caught and written to the log.</li>
+<li>Plugins run in the app shell, so they work on every page (chat list, chat, account, call). They don't run on a standalone page opened outside the shell.</li>
+<li>Plugins run whether or not Developer mode is on. Switch a plugin off to stop it; editing, switching off or deleting takes effect immediately.</li>
+<li>Sandboxing protects the site from a plugin, but a plugin you let read messages <strong>and</strong> contact other websites can send what it reads anywhere. Read code before enabling it.</li>
 </ul>
-
-<h2 id="perms">3. Permissions</h2>
-<p>On the Plugins tab (and in the review) permissions are shown in groups you can open and close: Look &amp; feel, Reading your chats, Writing &amp; sending, Your device &amp; sharing, Network &amp; control, Danger zone. Risky groups start open. The table below is the full list.</p>
-<table>
-<tr><th>Permission</th><th>Risk</th><th>Allows</th></tr>
-<tr><td><code>toast</code></td><td>low</td><td><code>qm.toast()</code></td></tr>
-<tr><td><code>style</code></td><td>low</td><td><code>qm.style.set / clear</code> (CSS injected into the site)</td></tr>
-<tr><td><code>panel</code></td><td>low</td><td><code>qm.panel.set / hide</code>, <code>panel-button</code> events</td></tr>
-<tr><td><code>me</code></td><td>medium</td><td><code>qm.me()</code> your account id and display name</td></tr>
-<tr><td><code>chat</code></td><td>medium</td><td><code>qm.chat.current()</code>, <code>qm.chat.insertText()</code>, events <code>chat-open</code> / <code>chat-close</code></td></tr>
-<tr><td><code>messages</code></td><td>high</td><td>event <code>message</code> with the text of messages that appear on your screen (already decrypted for display; locked ones are <code>null</code>)</td></tr>
-<tr><td><code>page</code></td><td>high</td><td><code>qm.page.*</code>: read what is on screen, click, type, scroll, search the chat. Event <code>page-load</code>. (It can read message text, so treat it like <code>messages</code>.)</td></tr>
-<tr><td><code>buttons</code></td><td>low</td><td><code>qm.buttons.*</code> and the <code>button</code> event: your own buttons in the chat header, the chat list and the call controls</td></tr>
-<tr><td><code>calls</code></td><td>medium</td><td><code>qm.calls.state()</code> and the <code>call-state</code> event</td></tr>
-<tr><td><code>devinfo</code></td><td>medium</td><td><code>qm.dev.*</code>: read developer info (<code>env</code>, <code>state</code>, <code>call</code>) and add your own cards to the developer views (app, chat, message, call). Event <code>dev-view</code></td></tr>
-<tr><td><code>send</code></td><td>high</td><td><code>qm.chat.send()</code> and <code>qm.messages.reply()</code>: sends a message in the open chat <em>for you</em> (5 per 10 seconds at most; a small notice says the plugin sent it)</td></tr>
-<tr><td><code>clipboard</code></td><td>medium</td><td><code>qm.clipboard.write()</code></td></tr>
-<tr><td><code>speech</code></td><td>low</td><td><code>qm.speech.say(text, {rate, pitch, lang})</code>, <code>qm.speech.stop()</code></td></tr>
-<tr><td><code>sound</code></td><td>low</td><td><code>qm.sound.play("beep"|"success"|"error"|"alert")</code></td></tr>
-<tr><td><code>badge</code></td><td>low</td><td><code>qm.badge.set(n)</code>, <code>qm.badge.clear()</code> (app icon badge and a number in the tab title)</td></tr>
-<tr><td><code>share</code></td><td>low</td><td><code>qm.share(text)</code>: share sheet, or copies the text when sharing isn't available</td></tr>
-<tr><td><code>download</code></td><td>medium</td><td><code>qm.download.save(name, text|object, mimeType)</code>: asks you first, 5 MB at most</td></tr>
-<tr><td><code>files</code></td><td>medium</td><td><code>qm.files.pick({accept})</code>: you choose one file (2 MB at most); returns <code>{name, size, type, text | base64}</code> or <code>null</code></td></tr>
-<tr><td><code>links</code></td><td>medium</td><td><code>qm.links.open(url)</code>: https only, you confirm each address</td></tr>
-<tr><td><code>unsandboxed</code></td><td><strong>critical</strong></td><td>See the warning below. <code>qm.unsafe = {window, document}</code> is the real page.</td></tr>
-<tr><td><code>notify</code></td><td>low</td><td><code>qm.notify()</code> (a system notification when the page is in the background, otherwise a toast) and <code>qm.vibrate()</code></td></tr>
-<tr><td><code>keys</code></td><td>low</td><td><code>qm.keys.*</code> and the <code>key</code> event: keyboard shortcuts (they need ctrl, alt or meta, so typing is never hijacked)</td></tr>
-<tr><td><code>ui</code></td><td>low</td><td>Windows with forms, lists and buttons (<code>qm.ui</code>)</td></tr>
-<tr><td><code>menu</code></td><td>medium</td><td>Extra choices in the message menu (<code>qm.messageMenu</code>)</td></tr>
-<tr><td><code>commands</code></td><td>low</td><td><code>qm.commands.*</code> and the <code>command</code> event: slash commands in the message box</td></tr>
-<tr><td><code>triggers</code></td><td>low</td><td><code>qm.triggers.*</code> and the <code>trigger-pick</code> event: pop-up lists for special characters (<code>/ @ # ! $ % &amp; * + = ~ ; : &lt; &gt; ? ^ |</code>) in the message box</td></tr>
-<tr><td><code>messageView</code></td><td>medium</td><td><code>qm.messageView.*</code>: change how messages look on screen (display only)</td></tr>
-<tr><td><code>editOwn</code></td><td>high</td><td><code>qm.messages.edit(key, text)</code> on your own messages</td></tr>
-<tr><td><code>deleteOwn</code></td><td>high</td><td><code>qm.messages.delete(key)</code> on your own messages (you confirm each time)</td></tr>
-<tr><td><code>watchMessages</code></td><td>medium</td><td>event <code>chat-message</code>: a new message arrived in <em>any</em> of your chats (the chat list already follows them all, so this costs no extra database reads). The text is included only if the plugin also holds <code>messages</code>.</td></tr>
-<tr><td><code>typing</code></td><td>low</td><td>event <code>typing</code>: someone started or stopped typing in any of your chats.</td></tr>
-<tr><td><code>unread</code></td><td>low</td><td><code>qm.chats.unread()</code> and the event <code>unread-change</code>: which chats are unread, and when one becomes unread or read. Chat names only, no message text.</td></tr>
-<tr><td><code>watchReads</code></td><td>low</td><td>event <code>message-read</code>: someone read the chat you have open.</td></tr>
-<tr><td><code>watchCalls</code></td><td>medium</td><td>event <code>incoming-call</code>: someone is calling you (also when another of your own devices is in a call).</td></tr>
-<tr><td><code>watchEdits</code></td><td>medium</td><td>event <code>message-edited</code>: a message in the open chat was edited. The old and new text are included only if the plugin also holds <code>messages</code>.</td></tr>
-<tr><td><code>watchDeletes</code></td><td>medium</td><td>event <code>message-deleted</code>: a message in the open chat was deleted. The text it had is included only if the plugin also holds <code>messages</code>.</td></tr>
-<tr><td><code>say</code></td><td>medium</td><td><code>qm.messages.say(text)</code>: shows a message from the plugin in the open chat. Only you see it; nothing is sent and it is gone after a reload.</td></tr>
-<tr><td><code>beforeSend</code></td><td>high</td><td><code>qm.beforeSend(fn)</code>: your message passes through the plugin before it is sent (see the API table).</td></tr>
-<tr><td><code>network</code></td><td>high</td><td>Use <code>qm.fetch</code> / <code>fetch</code> to https websites (the website must allow it with CORS)</td></tr>
-<tr><td>1</td><td>1.84.0</td><td>Added (API stays 1; set <code>minSite</code> to 1.84.0): permissions <code>say</code> and <code>beforeSend</code>; <code>qm.messages.say</code>, <code>qm.beforeSend</code>, <code>qm.settings.define / get / set</code>, event <code>settings-change</code>: a plugin that defines settings gets a ⚙ Settings button on the Plugins tab. Permissions are shown in collapsible groups. Plugins no longer need Developer mode.</td></tr></table>
-<p><code>qm.storage</code>, <code>qm.log</code>, <code>qm.on</code>, <code>qm.sleep</code>, <code>qm.version</code>, <code>qm.every</code>, <code>qm.after</code>, <code>qm.now</code>, <code>qm.util.*</code>, <code>qm.bus.*</code>, <code>qm.app.info</code> and <code>qm.plugins.list</code> need no permission. <code>qm.ask</code> needs any one of <code>panel</code>, <code>buttons</code>, <code>toast</code>.</p>
-
-<h2 id="api">4. The <code>qm</code> API</h2>
-<p>Every method that talks to the site returns a Promise.</p>
-<table>
-<tr><th>Call</th><th>Returns</th><th>Details</th></tr>
-<tr><td><code>qm.version</code></td><td>string</td><td>Site version, e.g. <code>"1.46.0"</code>.</td></tr>
-<tr><td><code>qm.apiVersion</code></td><td>number</td><td>Plugin API version (currently <code>1</code>).</td></tr>
-<tr><td><code>qm.on(event, fn)</code></td><td>function</td><td>Subscribe; returns an unsubscribe function. See <a href="#events">Events</a>.</td></tr>
-<tr><td><code>qm.off(event, fn)</code></td><td></td><td>Unsubscribe.</td></tr>
-<tr><td><code>qm.toast(text, kind?)</code></td><td></td><td>Needs <code>toast</code>. <code>kind</code>: <code>"info"</code> (default), <code>"success"</code>, <code>"error"</code>. Text is cut at 200 characters and prefixed with the plugin name.</td></tr>
-<tr><td><code>qm.me()</code></td><td><code>{uid, displayName}</code></td><td>Needs <code>me</code>.</td></tr>
-<tr><td><code>qm.style.set(css)</code></td><td></td><td>Needs <code>style</code>. Replaces this plugin's CSS (50,000 characters at most), applied to the shell and every frame, and re-applied when a frame reloads. Plain CSS, no <code>&lt;style&gt;</code> tags.</td></tr>
-<tr><td><code>qm.style.clear()</code></td><td></td><td>Removes this plugin's CSS.</td></tr>
-<tr><td><code>qm.storage.get(key)</code></td><td>any / null</td><td>Per-plugin storage in this browser (JSON values, 100 KB total). Deleted with the plugin.</td></tr>
-<tr><td><code>qm.storage.set(key, value)</code></td><td></td><td>Throws when the 100 KB limit is reached.</td></tr>
-<tr><td><code>qm.storage.remove(key)</code> / <code>qm.storage.all()</code></td><td></td><td></td></tr>
-<tr><td><code>qm.chat.current()</code></td><td><code>{chatId}</code> / null</td><td>Needs <code>chat</code>.</td></tr>
-<tr><td><code>qm.chat.insertText(text)</code></td><td></td><td>Needs <code>chat</code>. Appends to the message box of the open chat (2,000 characters at most). It never sends: the person still presses Send. Throws if no chat is open.</td></tr>
-<tr><td><code>qm.panel.set({title, lines, buttons})</code></td><td></td><td>Needs <code>panel</code>. A small floating card (bottom right). <code>lines</code>: up to 30 strings of plain text; <code>buttons</code>: up to 8 labels. A press fires the <code>panel-button</code> event. The card has its own close button.</td></tr>
-<tr><td><code>qm.panel.hide()</code></td><td></td><td>Removes the panel.</td></tr>
-<tr><td><code>qm.chat.open(chatId)</code></td><td></td><td>Needs <code>chat</code>. Opens that chat.</td></tr>
-<tr><td><code>qm.ask(title, placeholder?)</code></td><td>string / null</td><td>Needs <code>panel</code>, <code>buttons</code> or <code>toast</code>. Shows a question box (labelled with your plugin's name) and returns what the user typed, or <code>null</code> when cancelled.</td></tr>
-<tr><td><code>qm.sleep(ms)</code></td><td></td><td>Waits (60 s at most).</td></tr>
-<tr><td colspan="3"><strong>Page control</strong> (needs <code>page</code>). <code>frame</code> is <code>"detail"</code> (the open chat or account page, default), <code>"call"</code> or <code>"shell"</code> (the chat list).</td></tr>
-<tr><td><code>qm.page.query(selector, {text?, limit?, frame?})</code></td><td>array</td><td>Elements matching a CSS selector (optionally only those containing <code>text</code>): <code>{index, tag, text, attrs, visible, rect}</code>. Password values are never returned. In a chat, <code>.msg</code> is a message and <code>#messages</code> the list.</td></tr>
-<tr><td><code>qm.page.click(selector, {index?, text?, frame?})</code></td><td></td><td>Clicks the element. Throws when nothing matches.</td></tr>
-<tr><td><code>qm.page.type(selector, text, {index?, frame?})</code></td><td></td><td>Sets a text box (not password fields) and fires <code>input</code>/<code>change</code>. The chat's box is <code>#msgInput</code>. It does not send: click the send button yourself.</td></tr>
-<tr><td><code>qm.page.scroll({to?, by?, scroller?, frame?})</code></td><td><code>{top, height, view}</code></td><td><code>to</code>: <code>"top"</code>, <code>"bottom"</code>, a pixel number, or a selector to bring into view; or <code>by</code> pixels. <code>scroller</code> defaults to the chat's message list.</td></tr>
-<tr><td><code>qm.page.scrollUntil({text? | regex?, selector?, direction?, maxMs?, scroller?, frame?})</code></td><td><code>{found, text, key, waitedMs}</code> or <code>{found:false, reason}</code></td><td>Keeps scrolling (default: up, through <code>.msg</code> elements) and lets the page load older messages until something matches, then scrolls it into view and flashes it. Stops at the start/end of the list, after <code>maxMs</code> (default 30 s, at most 120 s), or when the user presses the Stop button that is shown meanwhile.</td></tr>
-<tr><td><code>qm.page.cancel()</code> / <code>qm.page.highlight(selector, opts?)</code> / <code>qm.page.url(opts?)</code></td><td></td><td>Stop a running search; flash an element; the path of the page in that frame.</td></tr>
-<tr><td colspan="3"><strong>Buttons</strong> (needs <code>buttons</code>)</td></tr>
-<tr><td><code>qm.buttons.add({id, label, where?, title?})</code></td><td></td><td><code>where</code>: <code>"chat"</code> (header of a chat), <code>"list"</code> (top of the chat list) or <code>"call"</code> (call controls). Up to 6 buttons per plugin. Pressing one fires the <code>button</code> event. Buttons come back by themselves when a page is replaced.</td></tr>
-<tr><td><code>qm.buttons.remove(id)</code> / <code>qm.buttons.clear()</code></td><td></td><td></td></tr>
-<tr><td colspan="3"><strong>Calls</strong> (needs <code>calls</code>)</td></tr>
-<tr><td><code>qm.calls.state()</code></td><td><code>{chatId, joined, visible, muted, camOn, screenOn, startedAt, title}</code></td><td>The current call (<code>joined:false</code> when none).</td></tr>
-<tr><td colspan="3"><strong>Developer info</strong> (needs <code>devinfo</code>)</td></tr>
-<tr><td><code>qm.dev.addCard(scope, {id, title, rows})</code></td><td></td><td>Adds (or replaces) a card in a developer view. <code>scope</code>: <code>"app"</code> (Developer: loaded data), <code>"chat"</code>, <code>"message"</code> or <code>"call"</code> (call stats panel). <code>rows</code>: <code>[label, value, tone?]</code> with tone <code>"ok" | "warn" | "bad" | "info"</code>; up to 40 rows, 8 cards per plugin. The card is marked with your plugin's name. Update it when the <code>dev-view</code> event fires (live views fire it about once a second).</td></tr>
-<tr><td><code>qm.dev.removeCard(id)</code></td><td></td><td></td></tr>
-<tr><td><code>qm.dev.read(scope)</code></td><td>object</td><td><code>"env"</code>: facts about this device and page (like the Raw tab). <code>"state"</code>: open chat, call and plugin states. <code>"call"</code>: the full call snapshot of the developer call panel (links, bitrates, devices); throws when no call is running. Capped at 200 KB.</td></tr>
-<tr><td colspan="3"><strong>Added in site 1.48.0</strong> (nothing existing changed; set <code>minSite</code> to 1.48.0 when you use them)</td></tr>
-<tr><td colspan="3"><strong>Helpers</strong> (no permission)</td></tr>
-<tr><td><code>qm.every(ms, fn)</code> / <code>qm.after(ms, fn)</code></td><td>function</td><td>Repeat / run once later (200 ms minimum for <code>every</code>). Return a function that cancels it. Stopped for you when the plugin is switched off.</td></tr>
-<tr><td><code>qm.now()</code></td><td>number</td><td><code>Date.now()</code>.</td></tr>
-<tr><td><code>qm.util.debounce(fn, ms)</code> / <code>throttle(fn, ms)</code> / <code>uid()</code> / <code>clamp(n, a, b)</code> / <code>fmtBytes(n)</code> / <code>fmtTime(ts, opts?)</code> / <code>fmtDuration(ms)</code></td><td></td><td>Small helpers: <code>fmtBytes(1536)</code> is <code>"1.5 KB"</code>, <code>fmtDuration(65000)</code> is <code>"1:05"</code>.</td></tr>
-<tr><td><code>qm.bus.emit(topic, data)</code> / <code>qm.bus.on(topic, fn)</code></td><td>number</td><td>Plugins can talk to each other: <code>emit</code> sends (20 KB at most) to every other running plugin and returns how many got it; <code>on</code> calls <code>fn(data, fromPluginName)</code>.</td></tr>
-<tr><td><code>qm.app.info()</code></td><td><code>{site, api, platform, online, dark, language, chatId?}</code></td><td><code>platform</code> is <code>"web"</code>, <code>"android"</code> or <code>"ios"</code>. <code>chatId</code> only with <code>chat</code>.</td></tr>
-<tr><td><code>qm.plugins.list()</code></td><td>array</td><td><code>{id, name, version, state}</code> of the running plugins.</td></tr>
-<tr><td><code>qm.storage.keys()</code> / <code>clear()</code> / <code>usage()</code></td><td></td><td>The keys, wipe, and <code>{bytes, limit}</code>.</td></tr>
-<tr><td colspan="3"><strong>Chat</strong> (needs <code>chat</code>; <code>send</code> for sending)</td></tr>
-<tr><td><code>qm.chat.getText()</code> / <code>setText(t)</code> / <code>clearText()</code> / <code>focus()</code></td><td></td><td>Read, replace, clear the message box of the open chat, or put the cursor in it.</td></tr>
-<tr><td><code>qm.chat.list()</code></td><td>array</td><td>The chat list: <code>{id, title, unread}</code> (plus <code>preview</code> if you also have <code>messages</code>).</td></tr>
-<tr><td><code>qm.chat.info()</code></td><td><code>{chatId, title}</code></td><td>The open chat.</td></tr>
-<tr><td><code>qm.chat.send(text, {replyTo?})</code></td><td>boolean</td><td>Needs <code>send</code>. Sends like the person pressing Send (mentions and replies work). 5 per 10 seconds.</td></tr>
-<tr><td colspan="3"><strong>Messages</strong> (needs <code>messages</code>) the messages that are loaded in the open chat</td></tr>
-<tr><td><code>qm.messages.list({limit?, text?, regex?, type?, fromMe?})</code></td><td>array</td><td><code>{key, fromMe, from, text, type, name?, time, replyTo, edited, pending}</code>, oldest first (the last <code>limit</code>, default 50). <code>text</code> is <code>null</code> for files and locked messages.</td></tr>
-<tr><td><code>qm.messages.find({text? | regex? | type? | fromMe?, limit?})</code> / <code>get(key)</code></td><td>array / object</td><td>Filter the loaded messages / one message.</td></tr>
-<tr><td><code>qm.messages.jump(key)</code></td><td>boolean</td><td>Scrolls to the message and flashes it (<code>false</code> if it is not loaded: use <code>qm.page.scrollUntil</code> first).</td></tr>
-<tr><td><code>qm.messages.reply(key, text)</code></td><td>boolean</td><td>Needs <code>send</code>. Replies to a message.</td></tr>
-<tr><td colspan="3"><strong>Commands and shortcuts</strong></td></tr>
-<tr><td><code>qm.commands.add({name, description?})</code> / <code>remove(name)</code> / <code>clear()</code> / <code>list()</code></td><td></td><td>Needs <code>commands</code>. When someone sends <code>/name some words</code> in a chat, nothing is sent and your plugin gets the <code>command</code> event <code>{name, args, chatId}</code>. Names: letters, numbers, - _ ; up to 10; a name belongs to one plugin.</td></tr>
-<tr><td><code>qm.keys.add({id, combo, label?})</code> / <code>remove(id)</code> / <code>clear()</code> / <code>list()</code></td><td>string</td><td>Needs <code>keys</code>. <code>combo</code> such as <code>"ctrl+shift+k"</code> or <code>"alt+1"</code> (ctrl, alt or meta required, or an F key; browser shortcuts like ctrl+c are refused). Fires the <code>key</code> event <code>{id, combo}</code>. Up to 10; works in the chat list, chats and the call page.</td></tr>
-<tr><td colspan="3"><strong>Look and feel</strong></td></tr>
-<tr><td><code>qm.style.vars({"--accent": "#e11d48"})</code></td><td></td><td>Needs <code>style</code>. Sets CSS variables on the page (replaces your previous set; values cannot contain <code>; { } &lt; &gt; \</code>).</td></tr>
-<tr><td><code>qm.style.sheet(id, css)</code> / <code>removeSheet(id)</code> / <code>get()</code></td><td></td><td>Needs <code>style</code>. Several named stylesheets (10 at most) besides <code>qm.style.set</code>.</td></tr>
-<tr><td><code>qm.ui.open({id?, title, size?, blocks, dismiss?})</code> / <code>update(id, patch)</code> / <code>close(id)</code> / <code>list()</code></td><td>1.49.0</td><td>Needs <code>ui</code>. A window drawn from blocks: <code>heading, text, kv, badge, input, toggle, select, progress, list, image, button, buttons, divider</code>. Give inputs an <code>id</code> to receive their values in <code>ui-action</code>. Up to 4 windows. Pass <code>reset: true</code> to clear what was typed when you redraw.</td></tr>
-<tr><td><code>qm.ui.confirm({title, message, ok?, danger?})</code> / <code>prompt({title, message, value?})</code></td><td>1.49.0</td><td>Needs <code>ui</code>. The site's own dialogs; resolve to true/false or text/null.</td></tr>
-<tr><td><code>qm.messageMenu.add({id, label, icon?, mine?, textOnly?, danger?})</code> / <code>remove(id)</code> / <code>clear()</code> / <code>list()</code></td><td>1.49.0</td><td>Needs <code>menu</code>. Adds a choice to every message's menu (max 8). Picking it fires <code>menu-click</code>.</td></tr>
-<tr><td colspan="3"><strong>Pop-up lists, message looks, your own messages, links (1.82.0)</strong></td></tr>
-<tr><td><code>qm.triggers.add({char, id?, title?, items})</code> / <code>remove(id)</code> / <code>clear()</code> / <code>list()</code></td><td>1.82.0</td><td>Needs <code>triggers</code>. When the person types <code>char</code> (at the start or after a space) a list opens under the message box. <code>items</code> is an array of <code>"text"</code> or <code>{label, sub?, icon?, value?, insert?}</code>, or a function <code>(query, char) =&gt; items</code> (may be async; answer within 0.6 s). Picking an entry puts <code>insert</code> (default: the character + <code>value</code>/<code>label</code> + a space) in the box; <code>insert: ""</code> only removes what was typed. A <code>trigger-pick</code> event follows. If several plugins (or the site: <strong>Default</strong>) use the same character, each one's entries are shown under its own name. Slash commands from <code>qm.commands</code> appear in the <code>/</code> list too. 6 lists per plugin.</td></tr>
-<tr><td><code>qm.messageView.add({id, match?, replace?, prefix?, suffix?, className?, hide?, blur?})</code> / <code>remove(id)</code> / <code>clear()</code> / <code>list()</code></td><td>1.82.0</td><td>Needs <code>messageView</code>. Changes how a message is <em>drawn</em>; the stored message, what others see and what “Copy” copies stay the same. <code>match</code>: <code>{fromMe?, type?, text?, regex?, flags?}</code>. <code>replace</code>: up to 6 of <code>{find, with, flags?, regex?}</code> (<code>find</code> is a regular expression unless <code>regex: false</code>; <code>with</code> may use <code>$1</code>). <code>className</code> adds <code>qmx-NAME</code> to the message (style it with <code>qm.style</code>). <code>hide</code> hides the message, <code>blur</code> blurs it until hovered. 10 rules per plugin.</td></tr>
-<tr><td><code>qm.messages.edit(key, text)</code></td><td>1.82.0</td><td>Needs <code>editOwn</code>. Edits one of <em>your own</em> text messages in the open chat, for everyone, without asking.</td></tr>
-<tr><td><code>qm.messages.say(text)</code></td><td>1.84.0</td><td>Needs <code>say</code>. Adds a local-only message (marked as coming from the plugin) to the open chat. Only you see it; it is never sent or saved.</td></tr>
-<tr><td><code>qm.beforeSend(async (text, {chatId}) =&gt; …)</code></td><td>1.84.0</td><td>Needs <code>beforeSend</code>. Runs every time you send a text message. Return a string to send that instead, <code>null</code> (or <code>false</code>) to cancel it, or nothing to send it unchanged. If the plugin takes longer than 1 second or throws, the message is sent as typed. Several plugins run one after another. Slash commands and <code>qm.chat.send</code> are not passed through it.</td></tr>
-<tr><td><code>qm.chats.unread()</code></td><td>1.86.0</td><td>Needs <code>unread</code>. <code>[{id, title}]</code> of the chats that are unread right now.</td></tr>
-<tr><td><code>qm.settings.define({title, description, fields})</code></td><td>1.84.0</td><td>No permission needed. Describes your own settings form; the plugin then gets a ⚙ Settings button on the Plugins tab. Each field is <code>{id, type, label, default, description}</code> with <code>type</code> one of <code>toggle</code>, <code>text</code>, <code>textarea</code>, <code>number</code>, <code>range</code> (with <code>min</code>, <code>max</code>, <code>step</code>), <code>select</code> (with <code>options: [{value, label}]</code>) or <code>color</code>. Call it every time the plugin starts; defining nothing removes the button.</td></tr>
-<tr><td><code>qm.settings.get(id?)</code> / <code>qm.settings.set(id, value)</code></td><td>1.84.0</td><td>Read all values (an object) or one; change one value from code. Values are checked against the field (range, options, length).</td></tr>
-<tr><td><code>qm.messages.delete(key)</code></td><td>1.82.0</td><td>Needs <code>deleteOwn</code>. Deletes one of <em>your own</em> messages for everyone; the person is asked to confirm each time (rejects if they decline).</td></tr>
-<tr><td><code>qm.banner.show({text, kind?, where?, buttons?, dismiss?})</code> / <code>hide({where?})</code> / <code>clear()</code></td><td></td><td>Needs <code>panel</code>. A bar at the top (<code>kind</code>: info, success, error; up to 3 buttons, which fire <code>banner-button</code> <code>{label}</code>).</td></tr>
-<tr><td><code>qm.panel.set({…, progress})</code></td><td></td><td><code>progress</code> (0 to 1) adds a progress bar to the panel.</td></tr>
-<tr><td><code>qm.notify(title, body?)</code> / <code>qm.vibrate(ms or [ms, …])</code></td><td>string / boolean</td><td>Needs <code>notify</code>. <code>notify</code> returns <code>"system"</code> or <code>"toast"</code>.</td></tr>
-<tr><td><code>qm.clipboard.write(text)</code></td><td>boolean</td><td>Needs <code>clipboard</code>. The browser may refuse when the page is not in front.</td></tr>
-<tr><td colspan="3"><strong>More page control</strong> (needs <code>page</code>; same options as the others)</td></tr>
-<tr><td><code>qm.page.waitFor(selector, {timeout?, text?, frame?})</code></td><td>element / null</td><td>Waits (30 s at most, default 5 s) for something to appear.</td></tr>
-<tr><td><code>qm.page.text(selector)</code> / <code>attr(selector, name)</code> / <code>count(selector)</code></td><td></td><td>Text of an element, an attribute, how many match.</td></tr>
-<tr><td><code>qm.page.focus(selector)</code> / <code>press(key, selector?, {shift?, ctrl?, alt?})</code></td><td></td><td>Focus an element; send a key press (for example <code>"Enter"</code>).</td></tr>
-<tr><td><code>qm.page.select(selector, value)</code> / <code>check(selector, bool)</code></td><td></td><td>Choose in a drop-down list; tick or untick a checkbox.</td></tr>
-<tr><td><code>qm.page.hide(selector)</code> / <code>show(selector)</code></td><td>number</td><td>Hide elements (they come back when the plugin is switched off) / show the ones this plugin hid.</td></tr>
-<tr><td><code>qm.page.title(text?)</code></td><td>string</td><td>Read or change the page title (restored when the plugin stops).</td></tr>
-<tr><td><code>qm.fetch(url, init?)</code></td><td>Response</td><td>Needs <code>network</code>. The normal <code>fetch</code>; subject to CORS.</td></tr>
-<tr><td><code>qm.log(...args)</code></td><td></td><td>Writes to the plugin log on the Plugins page (last 100 lines) and the browser console.</td></tr>
-</table>
-
-<h2 id="events">5. Events</h2>
-<table>
-<tr><th>Event</th><th>Needs</th><th>Data</th></tr>
-<tr><td><code>trigger-pick</code></td><td><code>triggers</code></td><td><code>{id, char, label, value, chatId}</code> when the person picks one of your entries.</td></tr>
-<tr><td><code>chat-open</code></td><td><code>chat</code></td><td><code>{chatId}</code> when a chat is opened in the shell.</td></tr>
-<tr><td><code>chat-close</code></td><td><code>chat</code></td><td><code>{chatId}</code> when it is closed or replaced.</td></tr>
-<tr><td><code>message</code></td><td><code>messages</code></td><td><code>{chatId, key, fromMe, text, type, time}</code>. Fired for every message that is drawn in an open chat (history included). <code>text</code> is <code>null</code> for files and for messages that can't be decrypted on this device.</td></tr>
-<tr><td><code>panel-button</code></td><td><code>panel</code></td><td><code>{label}</code> of the pressed button.</td></tr>
-<tr><td><code>button</code></td><td><code>buttons</code></td><td><code>{id, where}</code> of a button you added.</td></tr>
-<tr><td><code>call-state</code></td><td><code>calls</code></td><td>Same object as <code>qm.calls.state()</code>, when it changes (joined, left, minimised, muted…).</td></tr>
-<tr><td><code>dev-view</code></td><td><code>devinfo</code></td><td><code>{scope}</code>: a developer view was opened or refreshed. Good moment to call <code>qm.dev.addCard</code>.</td></tr>
-<tr><td><code>page-load</code></td><td><code>page</code></td><td><code>{frame}</code>: the chat/account page or the call page was (re)loaded.</td></tr>
-<tr><td colspan="3"><strong>Added in 1.48.0</strong></td></tr>
-<tr><td><code>command</code></td><td><code>commands</code></td><td><code>{name, args, chatId}</code> when someone sends <code>/name args</code>.</td></tr>
-<tr><td><code>key</code></td><td><code>keys</code></td><td><code>{id, combo}</code> of one of your shortcuts.</td></tr>
-<tr><td><code>ui-action</code></td><td><code>ui</code></td><td><code>{window, id, value, values}</code> when a button, list item or live field is used.</td></tr>
-<tr><td><code>ui-close</code></td><td><code>ui</code></td><td><code>{window, reason}</code> (button, backdrop, escape).</td></tr>
-<tr><td><code>menu-click</code></td><td><code>menu</code></td><td><code>{id, message}</code>; <code>message.text</code> only if you also hold <code>messages</code>.</td></tr>
-<tr><td><code>banner-button</code></td><td><code>panel</code></td><td><code>{label}</code> of a banner button.</td></tr>
-<tr><td><code>bus</code></td><td>none</td><td><code>{topic, data, from}</code> from another plugin (use <code>qm.bus.on(topic, fn)</code>).</td></tr>
-<tr><td><code>online</code> / <code>offline</code></td><td>none</td><td><code>{}</code> when the connection comes back / drops.</td></tr>
-<tr><td><code>visibility</code></td><td>none</td><td><code>{visible}</code> when the page goes to the background or comes back.</td></tr>
-<tr><td><code>theme-change</code></td><td>none</td><td><code>{dark}</code> when the light/dark theme changes.</td></tr>
-<tr><td colspan="3"><strong>Added in 1.84.0</strong></td></tr>
-<tr><td colspan="3"><strong>Added in 1.86.0</strong></td></tr>
-<tr><td><code>chat-message</code></td><td><code>watchMessages</code></td><td><code>{chatId, title, key, fromMe, fromName, type, time, text}</code> for a new message in any chat (not for the history that loads at start). <code>text</code> is <code>null</code> unless you also hold <code>messages</code>.</td></tr>
-<tr><td><code>typing</code></td><td><code>typing</code></td><td><code>{chatId, title, typing, count, names}</code> whenever the set of people typing in a chat changes (<code>typing: false</code> when it is empty).</td></tr>
-<tr><td><code>unread-change</code></td><td><code>unread</code></td><td><code>{chatId, title, unread, total}</code> when a chat turns unread or read; <code>total</code> is how many chats are unread now.</td></tr>
-<tr><td><code>message-read</code></td><td><code>watchReads</code></td><td><code>{chatId, uid, name, key}</code> when someone else's read marker moves in the open chat.</td></tr>
-<tr><td><code>incoming-call</code></td><td><code>watchCalls</code></td><td><code>{chatId, chatName, fromName, self}</code> when the incoming-call screen is shown (<code>self</code>: it is your own other device).</td></tr>
-<tr><td colspan="3"><strong>Added in 1.85.0</strong></td></tr>
-<tr><td><code>message-edited</code></td><td><code>watchEdits</code></td><td><code>{chatId, key, fromMe, type, time, editedAt, text, oldText}</code> when a message you can see in the open chat is edited (by anyone, you included). <code>text</code> / <code>oldText</code> are <code>null</code> unless you also hold <code>messages</code> (or the message is locked / not text).</td></tr>
-<tr><td><code>message-deleted</code></td><td><code>watchDeletes</code></td><td><code>{chatId, key, fromMe, type, time, text}</code> when a message in the open chat is deleted. <code>text</code> is the last text you saw, only with <code>messages</code>. Only messages that were already shown are reported.</td></tr>
-<tr><td colspan="3"><strong>Added in 1.84.0</strong></td></tr>
-<tr><td><code>settings-change</code></td><td>none</td><td><code>{values}</code> (all current values) after the person saves your settings form.</td></tr>
-</table>
-<p>Errors thrown in a handler are caught and written to the plugin log; they never break the chat.</p>
-
-<h2 id="css">6. CSS hooks</h2>
-<p>The site uses CSS variables for colours, so many looks need only a few lines: <code>--accent</code>, <code>--bg</code>, <code>--card</code>, <code>--text</code>, <code>--border</code>. Open Developer mode's <code>{ }</code> buttons or the browser's inspector to find class names (<code>.msg</code>, <code>.bubble</code>, <code>.chat-row</code>, <code>.topbar</code>…). Class names are not a stable API: use <code>minSite</code> and test after updates.</p>
-
-<h2 id="ex">7. Examples</h2>
-<h3>Your own settings and a before-send filter (1.84.0)</h3>
-<pre>await qm.settings.define({ title: "Politeness", fields: [
-  { id: "on", type: "toggle", label: "Add a greeting", default: true },
-  { id: "greeting", type: "text", label: "Greeting", default: "Hey! " } ] });
+<h3 id="unsandboxed-plugins-extremely-dangerous">Unsandboxed plugins (extremely dangerous)</h3>
+<blockquote>
+<p>⛔ <strong>Unsandboxed is EXTREMELY DANGEROUS.</strong> The lock is removed and the plugin runs with the same power as the site itself: it can read all your messages and encryption keys, send messages as you, read what you type (including passwords), change settings and send everything to anyone. You must type <code>UNSANDBOXED</code> to allow it, and it asks again whenever the plugin changes its permissions. Never turn it on because someone online asked you to.</p>
+</blockquote>
+<p>Inside the plugin <code>qm.permissions.sandboxed</code> is <code>false</code> and <code>qm.unsafe.window</code> / <code>qm.unsafe.document</code> reach the page. Prefer normal permissions whenever they are enough.</p>
+<h2 id="4-permissions">4. Permissions</h2>
+<p>Risk is what the review shows. <strong>Since</strong> is the site version that added it.</p>
+<h3 id="look-feel">Look &amp; feel</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Permission</th>
+<th>Risk</th>
+<th>Allows</th>
+<th>Since</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>toast</code></td>
+<td>low</td>
+<td><code>qm.toast()</code></td>
+<td>1.44.0</td>
+</tr>
+<tr>
+<td><code>style</code></td>
+<td>low</td>
+<td><code>qm.style.set / clear / vars / sheet / removeSheet / get</code>: CSS injected into the site</td>
+<td>1.44.0</td>
+</tr>
+<tr>
+<td><code>panel</code></td>
+<td>low</td>
+<td><code>qm.panel.*</code>, <code>qm.banner.*</code>, events <code>panel-button</code>, <code>banner-button</code></td>
+<td>1.44.0</td>
+</tr>
+<tr>
+<td><code>buttons</code></td>
+<td>low</td>
+<td><code>qm.buttons.*</code> and the <code>button</code> event: your own buttons in the chat header, chat list and call controls</td>
+<td>1.46.0</td>
+</tr>
+<tr>
+<td><code>ui</code></td>
+<td>low</td>
+<td><code>qm.ui.*</code>: windows with forms, lists and buttons</td>
+<td>1.49.0</td>
+</tr>
+<tr>
+<td><code>notify</code></td>
+<td>low</td>
+<td><code>qm.notify()</code> (system notification when the page is in the background, else a toast), <code>qm.vibrate()</code></td>
+<td>1.48.0</td>
+</tr>
+<tr>
+<td><code>speech</code></td>
+<td>low</td>
+<td><code>qm.speech.say(text, {rate, pitch, lang})</code>, <code>qm.speech.stop()</code></td>
+<td>1.52.0</td>
+</tr>
+<tr>
+<td><code>sound</code></td>
+<td>low</td>
+<td><code>qm.sound.play("beep"|"success"|"error"|"alert")</code></td>
+<td>1.52.0</td>
+</tr>
+<tr>
+<td><code>badge</code></td>
+<td>low</td>
+<td><code>qm.badge.set(n)</code>, <code>qm.badge.clear()</code> (app icon badge and a number in the tab title)</td>
+<td>1.52.0</td>
+</tr>
+<tr>
+<td><code>messageView</code></td>
+<td>medium</td>
+<td><code>qm.messageView.*</code>: change how messages look on screen (display only)</td>
+<td>1.82.0</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="reading-your-chats">Reading your chats</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Permission</th>
+<th>Risk</th>
+<th>Allows</th>
+<th>Since</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>me</code></td>
+<td>medium</td>
+<td><code>qm.me()</code>: your account id and display name</td>
+<td>1.44.0</td>
+</tr>
+<tr>
+<td><code>chat</code></td>
+<td>medium</td>
+<td><code>qm.chat.current / open / info / list / getText / setText / clearText / focus / insertText</code>, events <code>chat-open</code>, <code>chat-close</code></td>
+<td>1.44.0 (open 1.46.0, rest 1.48.0)</td>
+</tr>
+<tr>
+<td><code>messages</code></td>
+<td>high</td>
+<td><code>qm.messages.list / find / get / jump</code> and the <code>message</code> event: text of messages shown on your screen (already decrypted for display; locked ones are <code>null</code>)</td>
+<td>1.44.0 (API 1.48.0)</td>
+</tr>
+<tr>
+<td><code>calls</code></td>
+<td>medium</td>
+<td><code>qm.calls.state()</code> and the <code>call-state</code> event</td>
+<td>1.46.0</td>
+</tr>
+<tr>
+<td><code>devinfo</code></td>
+<td>medium</td>
+<td><code>qm.dev.*</code>: read developer info and add cards to the developer views; event <code>dev-view</code></td>
+<td>1.46.0</td>
+</tr>
+<tr>
+<td><code>watchEdits</code></td>
+<td>medium</td>
+<td>event <code>message-edited</code> (open chat). Old and new text only with <code>messages</code> too</td>
+<td>1.85.0</td>
+</tr>
+<tr>
+<td><code>watchDeletes</code></td>
+<td>medium</td>
+<td>event <code>message-deleted</code> (open chat). The text only with <code>messages</code> too</td>
+<td>1.85.0</td>
+</tr>
+<tr>
+<td><code>watchMessages</code></td>
+<td>medium</td>
+<td>event <code>chat-message</code>: a new message in <strong>any</strong> of your chats (no extra database reads). Text only with <code>messages</code> too</td>
+<td>1.86.0</td>
+</tr>
+<tr>
+<td><code>typing</code></td>
+<td>low</td>
+<td>event <code>typing</code>: someone started / stopped typing in any chat</td>
+<td>1.86.0</td>
+</tr>
+<tr>
+<td><code>unread</code></td>
+<td>low</td>
+<td><code>qm.chats.unread()</code> and event <code>unread-change</code> (chat names only, no text)</td>
+<td>1.86.0</td>
+</tr>
+<tr>
+<td><code>watchReads</code></td>
+<td>low</td>
+<td>event <code>message-read</code>: someone read the chat you have open</td>
+<td>1.86.0</td>
+</tr>
+<tr>
+<td><code>watchCalls</code></td>
+<td>medium</td>
+<td>event <code>incoming-call</code>: someone is calling you</td>
+<td>1.86.0</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="writing-sending">Writing &amp; sending</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Permission</th>
+<th>Risk</th>
+<th>Allows</th>
+<th>Since</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>commands</code></td>
+<td>low</td>
+<td><code>qm.commands.*</code> and the <code>command</code> event: slash commands in the message box</td>
+<td>1.48.0</td>
+</tr>
+<tr>
+<td><code>keys</code></td>
+<td>low</td>
+<td><code>qm.keys.*</code> and the <code>key</code> event: keyboard shortcuts (they need ctrl, alt or meta, so typing is never hijacked)</td>
+<td>1.48.0</td>
+</tr>
+<tr>
+<td><code>menu</code></td>
+<td>medium</td>
+<td><code>qm.messageMenu.*</code>: extra choices in the message menu</td>
+<td>1.49.0</td>
+</tr>
+<tr>
+<td><code>triggers</code></td>
+<td>low</td>
+<td><code>qm.triggers.*</code> and event <code>trigger-pick</code>: pop-up lists for special characters in the message box</td>
+<td>1.82.0</td>
+</tr>
+<tr>
+<td><code>send</code></td>
+<td>high</td>
+<td><code>qm.chat.send()</code>, <code>qm.messages.reply()</code>: sends in the open chat as you (5 per 10 seconds; a small notice says the plugin sent it)</td>
+<td>1.48.0</td>
+</tr>
+<tr>
+<td><code>editOwn</code></td>
+<td>high</td>
+<td><code>qm.messages.edit(key, text)</code> on your own messages</td>
+<td>1.82.0</td>
+</tr>
+<tr>
+<td><code>deleteOwn</code></td>
+<td>high</td>
+<td><code>qm.messages.delete(key)</code> on your own messages (you confirm each time)</td>
+<td>1.82.0</td>
+</tr>
+<tr>
+<td><code>say</code></td>
+<td>medium</td>
+<td><code>qm.messages.say(text)</code>: a message from the plugin that only <strong>you</strong> see (never sent or saved)</td>
+<td>1.84.0</td>
+</tr>
+<tr>
+<td><code>beforeSend</code></td>
+<td>high</td>
+<td><code>qm.beforeSend(fn)</code>: your message passes through the plugin before it is sent (rewrite or cancel)</td>
+<td>1.84.0</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="your-device-sharing">Your device &amp; sharing</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Permission</th>
+<th>Risk</th>
+<th>Allows</th>
+<th>Since</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>clipboard</code></td>
+<td>medium</td>
+<td><code>qm.clipboard.write()</code></td>
+<td>1.48.0</td>
+</tr>
+<tr>
+<td><code>share</code></td>
+<td>low</td>
+<td><code>qm.share(text)</code>: share sheet, or copies the text when sharing isn't available</td>
+<td>1.52.0</td>
+</tr>
+<tr>
+<td><code>download</code></td>
+<td>medium</td>
+<td><code>qm.download.save(name, text|object, mimeType)</code>: asks you first, 5 MB at most</td>
+<td>1.52.0</td>
+</tr>
+<tr>
+<td><code>files</code></td>
+<td>medium</td>
+<td><code>qm.files.pick({accept})</code>: you choose one file (2 MB at most); returns <code>{name, size, type, text | base64}</code> or <code>null</code></td>
+<td>1.52.0</td>
+</tr>
+<tr>
+<td><code>links</code></td>
+<td>medium</td>
+<td><code>qm.links.open(url)</code>: https only, you confirm each address</td>
+<td>1.52.0</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="network-control">Network &amp; control</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Permission</th>
+<th>Risk</th>
+<th>Allows</th>
+<th>Since</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>network</code></td>
+<td>high</td>
+<td><code>qm.fetch</code> / <code>fetch</code> to https websites (the site must allow it with CORS)</td>
+<td>1.44.0</td>
+</tr>
+<tr>
+<td><code>page</code></td>
+<td>high</td>
+<td><code>qm.page.*</code>: read what's on screen, click, type, scroll, search the chat; event <code>page-load</code>. It can read message text, so treat it like <code>messages</code></td>
+<td>1.46.0</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="danger-zone">Danger zone</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Permission</th>
+<th>Risk</th>
+<th>Allows</th>
+<th>Since</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>unsandboxed</code></td>
+<td>critical</td>
+<td>See the warning above. <code>qm.unsafe = {window, document}</code> is the real page</td>
+<td>1.52.0</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>No permission needed:</strong> <code>qm.storage.*</code>, <code>qm.log</code>, <code>qm.on / off</code>, <code>qm.sleep</code>, <code>qm.every / after / now</code>, <code>qm.util.*</code>, <code>qm.bus.*</code>, <code>qm.app.info</code>, <code>qm.plugins.list</code>, <code>qm.permissions</code>, <code>qm.settings.*</code>, <code>qm.version</code>, <code>qm.apiVersion</code>. <code>qm.ask</code> needs any one of <code>panel</code>, <code>buttons</code>, <code>toast</code>.</p>
+<h2 id="5-the-qm-api">5. The <code>qm</code> API</h2>
+<p>Every method that talks to the site returns a Promise. <strong>Needs</strong> names the permission; <strong>Since</strong> is the site version.</p>
+<h3 id="basics">Basics</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Returns</th>
+<th>Needs</th>
+<th>Since</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>qm.version</code> / <code>qm.apiVersion</code></td>
+<td>string / number</td>
+<td>none</td>
+<td>1.44.0</td>
+<td>Site version (e.g. <code>"1.86.1"</code>) and plugin API number (currently 1).</td>
+</tr>
+<tr>
+<td><code>qm.on(event, fn)</code> / <code>qm.off(event, fn)</code></td>
+<td>function</td>
+<td>none</td>
+<td>1.44.0</td>
+<td>Subscribe (returns an unsubscribe function). See Events.</td>
+</tr>
+<tr>
+<td><code>qm.log(...args)</code></td>
+<td></td>
+<td>none</td>
+<td>1.44.0</td>
+<td>Writes to the plugin log (Developer mode) and the browser console.</td>
+</tr>
+<tr>
+<td><code>qm.storage.get / set / remove / all</code></td>
+<td>any / null</td>
+<td>none</td>
+<td>1.44.0</td>
+<td>Per-plugin storage in this browser (JSON values, 100 KB in total). <code>set</code> throws when full. Deleted with the plugin.</td>
+</tr>
+<tr>
+<td><code>qm.storage.keys() / clear() / usage()</code></td>
+<td></td>
+<td>none</td>
+<td>1.48.0</td>
+<td>The keys, wipe, and <code>{bytes, limit}</code>.</td>
+</tr>
+<tr>
+<td><code>qm.sleep(ms)</code></td>
+<td></td>
+<td>none</td>
+<td>1.46.0</td>
+<td>Waits (60 s at most).</td>
+</tr>
+<tr>
+<td><code>qm.every(ms, fn)</code> / <code>qm.after(ms, fn)</code></td>
+<td>function</td>
+<td>none</td>
+<td>1.48.0</td>
+<td>Repeat (200 ms minimum) / run once later. Return a function that cancels; stopped for you when the plugin is switched off.</td>
+</tr>
+<tr>
+<td><code>qm.now()</code></td>
+<td>number</td>
+<td>none</td>
+<td>1.48.0</td>
+<td><code>Date.now()</code>.</td>
+</tr>
+<tr>
+<td><code>qm.util.debounce / throttle / uid / clamp / fmtBytes / fmtTime / fmtDuration</code></td>
+<td></td>
+<td>none</td>
+<td>1.48.0</td>
+<td>Small helpers: <code>fmtBytes(1536)</code> is <code>"1.5 KB"</code>, <code>fmtDuration(65000)</code> is <code>"1:05"</code>.</td>
+</tr>
+<tr>
+<td><code>qm.bus.emit(topic, data)</code> / <code>qm.bus.on(topic, fn)</code></td>
+<td>number</td>
+<td>none</td>
+<td>1.48.0</td>
+<td>Plugins talk to each other: <code>emit</code> sends (20 KB at most) to every other running plugin and returns how many got it; <code>on</code> calls <code>fn(data, fromPluginName)</code>.</td>
+</tr>
+<tr>
+<td><code>qm.app.info()</code></td>
+<td><code>{site, api, platform, online, dark, language, chatId?}</code></td>
+<td>none (<code>chatId</code> needs <code>chat</code>)</td>
+<td>1.48.0</td>
+<td><code>platform</code> is <code>"web"</code>, <code>"android"</code> or <code>"ios"</code>.</td>
+</tr>
+<tr>
+<td><code>qm.plugins.list()</code></td>
+<td>array</td>
+<td>none</td>
+<td>1.48.0</td>
+<td><code>{id, name, version, state}</code> of the running plugins.</td>
+</tr>
+<tr>
+<td><code>qm.permissions.list() / has(name) / sandboxed</code></td>
+<td></td>
+<td>none</td>
+<td>1.52.0</td>
+<td>Your own permissions.</td>
+</tr>
+<tr>
+<td><code>qm.toast(text, kind?)</code></td>
+<td></td>
+<td><code>toast</code></td>
+<td>1.44.0</td>
+<td><code>kind</code>: <code>"info"</code> (default), <code>"success"</code>, <code>"error"</code>. Cut at 200 characters, prefixed with the plugin name.</td>
+</tr>
+<tr>
+<td><code>qm.me()</code></td>
+<td><code>{uid, displayName}</code></td>
+<td><code>me</code></td>
+<td>1.44.0</td>
+<td></td>
+</tr>
+<tr>
+<td><code>qm.fetch(url, init?)</code></td>
+<td>Response</td>
+<td><code>network</code></td>
+<td>1.44.0</td>
+<td>The normal <code>fetch</code>; subject to CORS.</td>
+</tr>
+<tr>
+<td><code>qm.ask(title, placeholder?)</code></td>
+<td>string / null</td>
+<td><code>panel</code>, <code>buttons</code> or <code>toast</code></td>
+<td>1.46.0</td>
+<td>A question box labelled with your plugin's name; <code>null</code> when cancelled.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="your-own-settings-no-permission">Your own settings (no permission)</h3>
+<p><code>qm.settings.define({title, description, fields})</code> describes a form. The plugin then gets a <strong>⚙ Settings</strong> button on the Plugins tab (Save, Reset to defaults). Call it every time the plugin starts; defining nothing removes the button.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Since</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>qm.settings.define({title?, description?, fields})</code></td>
+<td>1.84.0</td>
+<td>Each field is <code>{id, type, label, default, description?}</code>. <code>type</code>: <code>toggle</code>, <code>text</code>, <code>textarea</code>, <code>number</code>, <code>range</code> (with <code>min</code>, <code>max</code>, <code>step</code>), <code>select</code> (with <code>options: [{value, label}]</code>) or <code>color</code>.</td>
+</tr>
+<tr>
+<td><code>qm.settings.get(id?)</code></td>
+<td>1.84.0</td>
+<td>All values (an object) or one. Missing values fall back to the field's <code>default</code>.</td>
+</tr>
+<tr>
+<td><code>qm.settings.set(id, value)</code></td>
+<td>1.84.0</td>
+<td>Change one value from code. It is checked against the field (range, options, length).</td>
+</tr>
+<tr>
+<td>event <code>settings-change</code></td>
+<td>1.84.0</td>
+<td><code>{values}</code> after the person saves the form.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="chat-needs-chat-sending-needs-send">Chat (needs <code>chat</code>; sending needs <code>send</code>)</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Needs</th>
+<th>Since</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>qm.chat.current()</code></td>
+<td><code>chat</code></td>
+<td>1.44.0</td>
+<td><code>{chatId}</code> or <code>null</code>.</td>
+</tr>
+<tr>
+<td><code>qm.chat.insertText(text)</code></td>
+<td><code>chat</code></td>
+<td>1.44.0</td>
+<td>Appends to the message box (2,000 characters at most). Never sends: the person still presses Send. Throws if no chat is open.</td>
+</tr>
+<tr>
+<td><code>qm.chat.open(chatId)</code></td>
+<td><code>chat</code></td>
+<td>1.46.0</td>
+<td>Opens that chat.</td>
+</tr>
+<tr>
+<td><code>qm.chat.getText() / setText(t) / clearText() / focus()</code></td>
+<td><code>chat</code></td>
+<td>1.48.0</td>
+<td>Read, replace, clear the message box, or put the cursor in it.</td>
+</tr>
+<tr>
+<td><code>qm.chat.list()</code></td>
+<td><code>chat</code></td>
+<td>1.48.0</td>
+<td><code>[{id, title, unread}]</code> (plus <code>preview</code> if you also have <code>messages</code>).</td>
+</tr>
+<tr>
+<td><code>qm.chat.info()</code></td>
+<td><code>chat</code></td>
+<td>1.48.0</td>
+<td><code>{chatId, title}</code> of the open chat.</td>
+</tr>
+<tr>
+<td><code>qm.chat.send(text, {replyTo?})</code></td>
+<td><code>send</code></td>
+<td>1.48.0</td>
+<td>Sends like pressing Send (mentions and replies work). 5 per 10 seconds. Returns a boolean.</td>
+</tr>
+<tr>
+<td><code>qm.chats.unread()</code></td>
+<td><code>unread</code></td>
+<td>1.86.0</td>
+<td><code>[{id, title}]</code> of the chats that are unread right now.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="messages-needs-messages-the-messages-loaded-in-the-open-chat">Messages (needs <code>messages</code>: the messages loaded in the open chat)</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Needs</th>
+<th>Since</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>qm.messages.list({limit?, text?, regex?, type?, fromMe?})</code></td>
+<td><code>messages</code></td>
+<td>1.48.0</td>
+<td><code>{key, fromMe, from, text, type, name?, time, replyTo, edited, pending}</code>, oldest first (the last <code>limit</code>, default 50). <code>text</code> is <code>null</code> for files and locked messages.</td>
+</tr>
+<tr>
+<td><code>qm.messages.find({...})</code> / <code>qm.messages.get(key)</code></td>
+<td><code>messages</code></td>
+<td>1.48.0</td>
+<td>Filter the loaded messages / one message.</td>
+</tr>
+<tr>
+<td><code>qm.messages.jump(key)</code></td>
+<td><code>messages</code></td>
+<td>1.48.0</td>
+<td>Scrolls to the message and flashes it (<code>false</code> if not loaded: use <code>qm.page.scrollUntil</code> first).</td>
+</tr>
+<tr>
+<td><code>qm.messages.reply(key, text)</code></td>
+<td><code>send</code></td>
+<td>1.48.0</td>
+<td>Replies to a message.</td>
+</tr>
+<tr>
+<td><code>qm.messages.edit(key, text)</code></td>
+<td><code>editOwn</code></td>
+<td>1.82.0</td>
+<td>Edits one of your own text messages in the open chat, for everyone, without asking.</td>
+</tr>
+<tr>
+<td><code>qm.messages.delete(key)</code></td>
+<td><code>deleteOwn</code></td>
+<td>1.82.0</td>
+<td>Deletes one of your own messages for everyone. The person confirms each time (rejects if declined).</td>
+</tr>
+<tr>
+<td><code>qm.messages.say(text)</code></td>
+<td><code>say</code></td>
+<td>1.84.0</td>
+<td>Adds a local-only message (marked as coming from the plugin) to the open chat. Never sent or saved.</td>
+</tr>
+<tr>
+<td><code>qm.beforeSend(async (text, {chatId}) =&gt; …)</code></td>
+<td><code>beforeSend</code></td>
+<td>1.84.0</td>
+<td>Runs every time you send a <strong>text</strong> message. Return a string to send that instead, <code>null</code> (or <code>false</code>) to cancel, or nothing to send it unchanged. If the plugin takes longer than 1 second or throws, the message is sent as typed. Several plugins run one after another. Slash commands and <code>qm.chat.send</code> are not passed through it.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="look-and-feel">Look and feel</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Needs</th>
+<th>Since</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>qm.style.set(css)</code> / <code>qm.style.clear()</code></td>
+<td><code>style</code></td>
+<td>1.44.0</td>
+<td>Replaces this plugin's CSS (50,000 characters at most), applied to the shell and every frame and re-applied when a frame reloads. Plain CSS, no <code>&lt;style&gt;</code> tags.</td>
+</tr>
+<tr>
+<td><code>qm.style.vars({"--accent": "#e11d48"})</code></td>
+<td><code>style</code></td>
+<td>1.48.0</td>
+<td>Sets CSS variables (replaces your previous set; values can't contain <code>; { } &lt; &gt; \</code>).</td>
+</tr>
+<tr>
+<td><code>qm.style.sheet(id, css)</code> / <code>removeSheet(id)</code> / <code>get()</code></td>
+<td><code>style</code></td>
+<td>1.48.0</td>
+<td>Up to 10 named stylesheets besides <code>qm.style.set</code>.</td>
+</tr>
+<tr>
+<td><code>qm.panel.set({title, lines, buttons, progress?})</code> / <code>qm.panel.hide()</code></td>
+<td><code>panel</code></td>
+<td>1.44.0</td>
+<td>A floating card (bottom right). Up to 30 lines of plain text, 8 buttons (event <code>panel-button</code>); <code>progress</code> (0 to 1) adds a bar.</td>
+</tr>
+<tr>
+<td><code>qm.banner.show({text, kind?, where?, buttons?, dismiss?})</code> / <code>hide({where?})</code> / <code>clear()</code></td>
+<td><code>panel</code></td>
+<td>1.48.0 (<code>where</code> 1.49.0)</td>
+<td>A bar at the top (<code>kind</code>: info, success, error; up to 3 buttons, which fire <code>banner-button</code>).</td>
+</tr>
+<tr>
+<td><code>qm.buttons.add({id, label, where?, title?})</code> / <code>remove(id)</code> / <code>clear()</code></td>
+<td><code>buttons</code></td>
+<td>1.46.0</td>
+<td><code>where</code>: <code>"chat"</code>, <code>"list"</code> or <code>"call"</code>. Up to 6 per plugin; they come back by themselves when a page is replaced. A press fires <code>button</code>.</td>
+</tr>
+<tr>
+<td><code>qm.ui.open({id?, title, size?, blocks, dismiss?})</code> / <code>update(id, patch)</code> / <code>close(id)</code> / <code>list()</code></td>
+<td><code>ui</code></td>
+<td>1.49.0</td>
+<td>A window drawn from blocks: heading, text, kv, badge, input, toggle, select, progress, list, image, button, buttons, divider. Give inputs an <code>id</code> to receive values in <code>ui-action</code>. Up to 4 windows. <code>reset: true</code> clears what was typed on redraw.</td>
+</tr>
+<tr>
+<td><code>qm.ui.confirm({title, message, ok?, danger?})</code> / <code>prompt({title, message, value?})</code></td>
+<td><code>ui</code></td>
+<td>1.49.0</td>
+<td>The site's own dialogs; resolve to true/false or text/null.</td>
+</tr>
+<tr>
+<td><code>qm.messageMenu.add({id, label, icon?, mine?, textOnly?, danger?})</code> / <code>remove / clear / list</code></td>
+<td><code>menu</code></td>
+<td>1.49.0</td>
+<td>Adds a choice to every message's menu (8 at most); picking it fires <code>menu-click</code>.</td>
+</tr>
+<tr>
+<td><code>qm.messageView.add({id, match?, replace?, prefix?, suffix?, className?, hide?, blur?})</code> / <code>remove / clear / list</code></td>
+<td><code>messageView</code></td>
+<td>1.82.0</td>
+<td>Changes how a message is drawn; the stored message, what others see and what "Copy" copies stay the same. <code>match</code>: <code>{fromMe?, type?, text?, regex?, flags?}</code>. <code>replace</code>: up to 6 of <code>{find, with, flags?, regex?}</code> (<code>with</code> may use <code>$1</code>). <code>className</code> adds <code>qmx-NAME</code>; <code>hide</code>, <code>blur</code> (until hovered). 10 rules per plugin.</td>
+</tr>
+<tr>
+<td><code>qm.notify(title, body?)</code> / <code>qm.vibrate(ms | [ms, …])</code></td>
+<td><code>notify</code></td>
+<td>1.48.0</td>
+<td><code>notify</code> returns <code>"system"</code> or <code>"toast"</code>.</td>
+</tr>
+<tr>
+<td><code>qm.speech.say / stop</code>, <code>qm.sound.play</code>, <code>qm.badge.set / clear</code></td>
+<td><code>speech</code>, <code>sound</code>, <code>badge</code></td>
+<td>1.52.0</td>
+<td>See the permission table.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="commands-shortcuts-and-pop-up-lists">Commands, shortcuts and pop-up lists</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Needs</th>
+<th>Since</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>qm.commands.add({name, description?})</code> / <code>remove(name)</code> / <code>clear()</code> / <code>list()</code></td>
+<td><code>commands</code></td>
+<td>1.48.0</td>
+<td>When someone sends <code>/name some words</code>, nothing is sent and the plugin gets <code>command</code> <code>{name, args, chatId}</code>. Names: letters, numbers, <code>-</code> <code>_</code>; up to 10; a name belongs to one plugin. They also appear in the <code>/</code> list.</td>
+</tr>
+<tr>
+<td><code>qm.keys.add({id, combo, label?})</code> / <code>remove / clear / list</code></td>
+<td><code>keys</code></td>
+<td>1.48.0</td>
+<td><code>combo</code> like <code>"ctrl+shift+k"</code> or <code>"alt+1"</code> (ctrl, alt or meta required, or an F key; browser shortcuts like ctrl+c are refused). Fires <code>key</code> <code>{id, combo}</code>. Up to 10; works in the chat list, chats and the call page.</td>
+</tr>
+<tr>
+<td><code>qm.triggers.add({char, id?, title?, items})</code> / <code>remove(id)</code> / <code>clear()</code> / <code>list()</code></td>
+<td><code>triggers</code></td>
+<td>1.82.0</td>
+<td>When the person types <code>char</code> (at the start or after a space) a list opens under the message box. <code>items</code> is an array of <code>"text"</code> or <code>{label, sub?, icon?, value?, insert?}</code>, or a function <code>(query, char) =&gt; items</code> (may be async; answer within 0.6 s). Picking puts <code>insert</code> (default: the character + value/label + a space) in the box; <code>insert: ""</code> only removes what was typed. Then <code>trigger-pick</code> fires. When several plugins (or the site: <em>Default</em>) use one character, each is listed under its own name. 6 lists per plugin. Characters: <code>/ @ # ! $ % &amp; * + = ~ ; : &lt; &gt; ? ^ |</code>.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="your-device-and-sharing">Your device and sharing</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Needs</th>
+<th>Since</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>qm.clipboard.write(text)</code></td>
+<td><code>clipboard</code></td>
+<td>1.48.0</td>
+<td>Returns a boolean; the browser may refuse when the page isn't in front.</td>
+</tr>
+<tr>
+<td><code>qm.share(text)</code></td>
+<td><code>share</code></td>
+<td>1.52.0</td>
+<td></td>
+</tr>
+<tr>
+<td><code>qm.download.save(name, data, mimeType?)</code></td>
+<td><code>download</code></td>
+<td>1.52.0</td>
+<td></td>
+</tr>
+<tr>
+<td><code>qm.files.pick({accept?})</code></td>
+<td><code>files</code></td>
+<td>1.52.0</td>
+<td></td>
+</tr>
+<tr>
+<td><code>qm.links.open(url)</code></td>
+<td><code>links</code></td>
+<td>1.52.0</td>
+<td></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="calls-and-developer-info">Calls and developer info</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Needs</th>
+<th>Since</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>qm.calls.state()</code></td>
+<td><code>calls</code></td>
+<td>1.46.0</td>
+<td><code>{chatId, joined, visible, muted, camOn, screenOn, startedAt, title}</code> (<code>joined: false</code> when none).</td>
+</tr>
+<tr>
+<td><code>qm.dev.addCard(scope, {id, title, rows})</code> / <code>removeCard(id)</code></td>
+<td><code>devinfo</code></td>
+<td>1.46.0</td>
+<td><code>scope</code>: <code>"app"</code>, <code>"chat"</code>, <code>"message"</code> or <code>"call"</code>. <code>rows</code>: <code>[label, value, tone?]</code> with tone <code>ok</code>, <code>warn</code>, <code>bad</code>, <code>info</code>; up to 40 rows, 8 cards per plugin. Update it on <code>dev-view</code>.</td>
+</tr>
+<tr>
+<td><code>qm.dev.read(scope)</code></td>
+<td><code>devinfo</code></td>
+<td>1.46.0</td>
+<td><code>"env"</code>, <code>"state"</code> or <code>"call"</code> (throws when no call is running). 200 KB cap.</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="page-control-needs-page">Page control (needs <code>page</code>)</h3>
+<p><code>frame</code> is <code>"detail"</code> (the open chat or account page, default), <code>"call"</code> or <code>"shell"</code> (the chat list).</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Call</th>
+<th>Since</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>qm.page.query(selector, {text?, limit?, frame?})</code></td>
+<td>1.46.0</td>
+<td>Elements matching a CSS selector: <code>{index, tag, text, attrs, visible, rect}</code>. Password values are never returned. In a chat, <code>.msg</code> is a message and <code>#messages</code> the list.</td>
+</tr>
+<tr>
+<td><code>qm.page.click(selector, {index?, text?, frame?})</code></td>
+<td>1.46.0</td>
+<td>Clicks the element; throws if nothing matches.</td>
+</tr>
+<tr>
+<td><code>qm.page.type(selector, text, {index?, frame?})</code></td>
+<td>1.46.0</td>
+<td>Sets a text box (not password fields) and fires <code>input</code> / <code>change</code>. The chat's box is <code>#msgInput</code>. It doesn't send.</td>
+</tr>
+<tr>
+<td><code>qm.page.scroll({to?, by?, scroller?, frame?})</code></td>
+<td>1.46.0</td>
+<td><code>to</code>: <code>"top"</code>, <code>"bottom"</code>, pixels or a selector. Returns <code>{top, height, view}</code>.</td>
+</tr>
+<tr>
+<td><code>qm.page.scrollUntil({text? | regex?, selector?, direction?, maxMs?, scroller?, frame?})</code></td>
+<td>1.46.0</td>
+<td>Keeps scrolling and loading older messages until something matches, then flashes it. Stops at the end, after <code>maxMs</code> (default 30 s, max 120 s) or when the person presses Stop.</td>
+</tr>
+<tr>
+<td><code>qm.page.cancel() / highlight(selector, opts?) / url(opts?)</code></td>
+<td>1.46.0</td>
+<td>Stop a search; flash an element; the path of the page.</td>
+</tr>
+<tr>
+<td><code>qm.page.waitFor(selector, {timeout?, text?, frame?})</code></td>
+<td>1.48.0</td>
+<td>Waits (30 s at most, default 5 s).</td>
+</tr>
+<tr>
+<td><code>qm.page.text / attr / count / focus / press / select / check / hide / show / title</code></td>
+<td>1.48.0</td>
+<td>Small page helpers; <code>hide</code> is undone when the plugin stops, <code>title</code> is restored.</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="6-events">6. Events</h2>
+<p>Handlers get one object. Errors in a handler are caught and written to the log.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Event</th>
+<th>Needs</th>
+<th>Since</th>
+<th>Data</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>chat-open</code> / <code>chat-close</code></td>
+<td><code>chat</code></td>
+<td>1.44.0</td>
+<td><code>{chatId}</code></td>
+</tr>
+<tr>
+<td><code>message</code></td>
+<td><code>messages</code></td>
+<td>1.44.0</td>
+<td><code>{chatId, key, fromMe, text, type, time}</code> for every message drawn in an open chat (history included). <code>text</code> is <code>null</code> for files and undecryptable messages.</td>
+</tr>
+<tr>
+<td><code>panel-button</code></td>
+<td><code>panel</code></td>
+<td>1.44.0</td>
+<td><code>{label}</code></td>
+</tr>
+<tr>
+<td><code>button</code></td>
+<td><code>buttons</code></td>
+<td>1.46.0</td>
+<td><code>{id, where}</code></td>
+</tr>
+<tr>
+<td><code>call-state</code></td>
+<td><code>calls</code></td>
+<td>1.46.0</td>
+<td>Same object as <code>qm.calls.state()</code> when it changes.</td>
+</tr>
+<tr>
+<td><code>dev-view</code></td>
+<td><code>devinfo</code></td>
+<td>1.46.0</td>
+<td><code>{scope}</code>: a developer view was opened or refreshed.</td>
+</tr>
+<tr>
+<td><code>page-load</code></td>
+<td><code>page</code></td>
+<td>1.46.0</td>
+<td><code>{frame}</code></td>
+</tr>
+<tr>
+<td><code>command</code></td>
+<td><code>commands</code></td>
+<td>1.48.0</td>
+<td><code>{name, args, chatId}</code></td>
+</tr>
+<tr>
+<td><code>key</code></td>
+<td><code>keys</code></td>
+<td>1.48.0</td>
+<td><code>{id, combo}</code></td>
+</tr>
+<tr>
+<td><code>banner-button</code></td>
+<td><code>panel</code></td>
+<td>1.48.0</td>
+<td><code>{label}</code></td>
+</tr>
+<tr>
+<td><code>bus</code></td>
+<td>none</td>
+<td>1.48.0</td>
+<td><code>{topic, data, from}</code></td>
+</tr>
+<tr>
+<td><code>online</code> / <code>offline</code>, <code>visibility</code>, <code>theme-change</code></td>
+<td>none</td>
+<td>1.48.0</td>
+<td><code>{}</code>, <code>{visible}</code>, <code>{dark}</code></td>
+</tr>
+<tr>
+<td><code>ui-action</code> / <code>ui-close</code></td>
+<td><code>ui</code></td>
+<td>1.49.0</td>
+<td><code>{window, id, value, values}</code> / <code>{window, reason}</code></td>
+</tr>
+<tr>
+<td><code>menu-click</code></td>
+<td><code>menu</code></td>
+<td>1.49.0</td>
+<td><code>{id, message}</code>; <code>message.text</code> only with <code>messages</code> too.</td>
+</tr>
+<tr>
+<td><code>trigger-pick</code></td>
+<td><code>triggers</code></td>
+<td>1.82.0</td>
+<td><code>{id, char, label, value, chatId}</code></td>
+</tr>
+<tr>
+<td><code>settings-change</code></td>
+<td>none</td>
+<td>1.84.0</td>
+<td><code>{values}</code></td>
+</tr>
+<tr>
+<td><code>message-edited</code></td>
+<td><code>watchEdits</code></td>
+<td>1.85.0</td>
+<td><code>{chatId, key, fromMe, type, time, editedAt, text, oldText}</code> for the open chat. <code>text</code> / <code>oldText</code> are <code>null</code> without <code>messages</code>.</td>
+</tr>
+<tr>
+<td><code>message-deleted</code></td>
+<td><code>watchDeletes</code></td>
+<td>1.85.0</td>
+<td><code>{chatId, key, fromMe, type, time, text}</code>; only messages already shown. <code>text</code> is the last text seen, only with <code>messages</code>.</td>
+</tr>
+<tr>
+<td><code>chat-message</code></td>
+<td><code>watchMessages</code></td>
+<td>1.86.0</td>
+<td><code>{chatId, title, key, fromMe, fromName, type, time, text}</code> for a new message in any chat (not the history at start). <code>text</code> is <code>null</code> without <code>messages</code>.</td>
+</tr>
+<tr>
+<td><code>typing</code></td>
+<td><code>typing</code></td>
+<td>1.86.0</td>
+<td><code>{chatId, title, typing, count, names}</code> whenever who is typing in a chat changes (<code>typing: false</code> when nobody).</td>
+</tr>
+<tr>
+<td><code>unread-change</code></td>
+<td><code>unread</code></td>
+<td>1.86.0</td>
+<td><code>{chatId, title, unread, total}</code> (<code>total</code> = unread chats now).</td>
+</tr>
+<tr>
+<td><code>message-read</code></td>
+<td><code>watchReads</code></td>
+<td>1.86.0</td>
+<td><code>{chatId, uid, name, key}</code> when someone else's read marker moves in the open chat.</td>
+</tr>
+<tr>
+<td><code>incoming-call</code></td>
+<td><code>watchCalls</code></td>
+<td>1.86.0</td>
+<td><code>{chatId, chatName, fromName, self}</code> (<code>self</code>: your own other device).</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="7-styling">7. Styling</h2>
+<p>The site uses CSS variables for colours, so many looks need only a few lines: <code>--accent</code>, <code>--bg</code>, <code>--card</code>, <code>--text</code>, <code>--border</code>. Open Developer mode's <code>{ }</code> buttons or the browser inspector to find class names (<code>.msg</code>, <code>.bubble</code>, <code>.chat-row</code>, <code>.topbar</code>…). Class names are not a stable API: use <code>minSite</code> and test after updates. Links to places inside QuickMessage (<code>qm:chat/ID</code>, <code>qm:settings/advanced</code>…) are typed with <code>#</code> in the message box and shown as small buttons.</p>
+<h2 id="8-examples">8. Examples</h2>
+<h3 id="settings-and-a-before-send-filter">Settings and a before-send filter</h3>
+<p>Permissions: <code>beforeSend</code>, <code>say</code>. (1.84.0)</p>
+<pre><code class="language-js">await qm.settings.define({ title: &quot;Politeness&quot;, fields: [
+  { id: &quot;on&quot;, type: &quot;toggle&quot;, label: &quot;Add a greeting&quot;, default: true },
+  { id: &quot;greeting&quot;, type: &quot;text&quot;, label: &quot;Greeting&quot;, default: &quot;Hey! &quot; } ] });
 let cfg = await qm.settings.get();
-qm.on("settings-change", e =&gt; { cfg = e.values; });
-await qm.beforeSend(async text =&gt; (cfg.on ? cfg.greeting + text : text));   // permission: beforeSend
-qm.messages.say("Politeness is on");                                          // permission: say</pre>
-<h3>Pop-up list on a character, and a message look (1.82.0)</h3>
-<pre>qm.triggers.add({ char: "!", title: "Emoji", items: [
-  { label: "shrug", insert: "¯\\_(ツ)_/¯ " }, { label: "party", insert: "🎉 " } ] });
-qm.messageView.add({ id: "spoilers", match: { regex: "spoiler" }, blur: true });
-qm.messageView.add({ id: "shout", replace: [{ find: "\\bheck\\b", with: "h*ck" }] });</pre>
-<p>Links to places inside QuickMessage (<code>qm:chat/ID</code>, <code>qm:settings/advanced</code>, …) are written by typing <code>#</code> in the message box; they show as small buttons.</p>
-<h3>Message counter</h3>
-<pre>let n = Number(await qm.storage.get('count')) || 0;
+qm.on(&quot;settings-change&quot;, e =&gt; { cfg = e.values; });
+await qm.beforeSend(async text =&gt; (cfg.on ? cfg.greeting + text : text));
+qm.messages.say(&quot;Politeness is on&quot;);
+</code></pre>
+<h3 id="unread-badge-and-typing">Unread badge and typing</h3>
+<p>Permissions: <code>unread</code>, <code>typing</code>, <code>badge</code>. (1.86.0)</p>
+<pre><code class="language-js">const paint = async () =&gt; qm.badge.set((await qm.chats.unread()).length);
+qm.on(&quot;unread-change&quot;, paint); paint();
+qm.on(&quot;typing&quot;, e =&gt; { if (e.typing) qm.toast((e.names[0] || &quot;Someone&quot;) + &quot; is typing in &quot; + e.title); });
+</code></pre>
+<h3 id="know-when-messages-are-edited-or-deleted">Know when messages are edited or deleted</h3>
+<p>Permissions: <code>watchEdits</code>, <code>watchDeletes</code>, <code>messages</code>, <code>say</code>. (1.85.0)</p>
+<pre><code class="language-js">qm.on(&quot;message-edited&quot;, e =&gt; { if (!e.fromMe) qm.messages.say(&quot;Edited: “&quot; + e.oldText + &quot;” → “&quot; + e.text + &quot;”&quot;); });
+qm.on(&quot;message-deleted&quot;, e =&gt; { if (!e.fromMe &amp;&amp; e.text) qm.messages.say(&quot;Deleted: “&quot; + e.text + &quot;”&quot;); });
+</code></pre>
+<h3 id="pop-up-list-on-a-character-and-message-looks">Pop-up list on a character and message looks</h3>
+<p>Permissions: <code>triggers</code>, <code>messageView</code>. (1.82.0)</p>
+<pre><code class="language-js">qm.triggers.add({ char: &quot;!&quot;, title: &quot;Emoji&quot;, items: [
+  { label: &quot;shrug&quot;, insert: &quot;¯\\_(ツ)_/¯ &quot; }, { label: &quot;party&quot;, insert: &quot;🎉 &quot; } ] });
+qm.messageView.add({ id: &quot;spoilers&quot;, match: { regex: &quot;spoiler&quot; }, blur: true });
+qm.messageView.add({ id: &quot;shout&quot;, replace: [{ find: &quot;\\bheck\\b&quot;, with: &quot;h*ck&quot; }] });
+</code></pre>
+<h3 id="slash-commands-and-a-shortcut">Slash commands and a shortcut</h3>
+<p>Permissions: <code>commands</code>, <code>keys</code>, <code>send</code>, <code>chat</code>, <code>toast</code>. (1.48.0)</p>
+<pre><code class="language-js">await qm.commands.add({ name: 'shrug', description: 'Send a shrug' });
+qm.on('command', async c =&gt; { if (c.name === 'shrug') await qm.chat.send((c.args ? c.args + ' ' : '') + '¯\\_(ツ)_/¯'); });
+await qm.keys.add({ id: 'draft', combo: 'ctrl+shift+d' });
+qm.on('key', async () =&gt; qm.toast('Draft: ' + (await qm.chat.getText())));
+</code></pre>
+<h3 id="message-counter">Message counter</h3>
+<p>Permissions: <code>panel</code>, <code>messages</code>.</p>
+<pre><code class="language-js">let n = Number(await qm.storage.get('count')) || 0;
 const show = () =&gt; qm.panel.set({ title: 'Messages seen', lines: ['Total: ' + n], buttons: ['Reset'] });
 show();
 qm.on('message', async () =&gt; { n++; await qm.storage.set('count', n); show(); });
-qm.on('panel-button', async () =&gt; { n = 0; await qm.storage.set('count', 0); show(); });</pre>
-<p>Permissions: <code>panel</code>, <code>messages</code>.</p>
-<h3>Quick reply buttons</h3>
-<pre>qm.on('chat-open', () =&gt; qm.panel.set({ title: 'Quick text', buttons: ['On my way', 'Call you later', 'Thanks!'] }));
-qm.on('chat-close', () =&gt; qm.panel.hide());
-qm.on('panel-button', b =&gt; qm.chat.insertText(b.label));</pre>
-<p>Permissions: <code>panel</code>, <code>chat</code>.</p>
-<h3>Square bubbles and a red accent</h3>
-<pre>await qm.style.set(`
-  :root { --accent: #e11d48; }
-  .bubble { border-radius: 4px !important; }
-`);</pre>
-<p>Permission: <code>style</code>.</p>
-<h3>Joke of the day (network)</h3>
-<pre>const r = await qm.fetch('https://official-joke-api.appspot.com/random_joke');
-const j = await r.json();
-qm.toast(j.setup + ' ' + j.punchline);</pre>
-<p>Permissions: <code>network</code>, <code>toast</code>.</p>
-
-<h3>Find a message (button that scrolls the chat)</h3>
-<pre>await qm.buttons.add({ id: 'find', where: 'chat', label: 'Find' });
+qm.on('panel-button', async () =&gt; { n = 0; await qm.storage.set('count', 0); show(); });
+</code></pre>
+<h3 id="find-a-message">Find a message</h3>
+<p>Permissions: <code>buttons</code>, <code>page</code>, <code>toast</code>. (1.46.0)</p>
+<pre><code class="language-js">await qm.buttons.add({ id: 'find', where: 'chat', label: 'Find' });
 qm.on('button', async b =&gt; {
   if (b.id !== 'find') return;
   const text = await qm.ask('Find a message', 'Text to look for');
   if (!text) return;
   const r = await qm.page.scrollUntil({ text, direction: 'up', maxMs: 60000 });
   qm.toast(r.found ? 'Found it' : 'Not found (' + r.reason + ')', r.found ? 'success' : 'error');
-});</pre>
-<p>Permissions: <code>buttons</code>, <code>page</code>, <code>toast</code>.</p>
-<h3>Extra info in the call stats</h3>
-<pre>const paint = async () =&gt; {
-  const c = await qm.calls.state();
-  let rows = [['In a call', c.joined ? 'yes' : 'no', c.joined ? 'ok' : '']];
-  if (c.joined) { const s = await qm.dev.read('call'); rows.push(['Connections', Object.keys(s.links || {}).length]); }
-  await qm.dev.addCard('call', { id: 'extra', title: 'Call extras', rows });
-};
-qm.on('dev-view', paint); qm.on('call-state', paint);</pre>
-<p>Permissions: <code>devinfo</code>, <code>calls</code>.</p>
-
-<h3>Slash commands and a shortcut (1.48.0)</h3>
-<p>Permissions: <code>commands</code>, <code>keys</code>, <code>send</code>, <code>chat</code>, <code>toast</code>.</p>
-<pre><code>await qm.commands.add({ name: 'shrug', description: 'Send a shrug' });
-await qm.commands.add({ name: 'time', description: 'Send the time' });
-qm.on('command', async c =&gt; {
-  if (c.name === 'shrug') await qm.chat.send((c.args ? c.args + ' ' : '') + '¯\\_(ツ)_/¯');
-  if (c.name === 'time') await qm.chat.send('It is ' + new Date().toLocaleTimeString());
 });
-await qm.keys.add({ id: 'draft', combo: 'ctrl+shift+d' });
-qm.on('key', async () =&gt; qm.toast('Draft: ' + (await qm.chat.getText())));</code></pre>
-<h3>Find your messages and copy them (1.48.0)</h3>
-<p>Permissions: <code>messages</code>, <code>clipboard</code>, <code>keys</code>, <code>toast</code>.</p>
-<pre><code>await qm.keys.add({ id: 'copy', combo: 'ctrl+shift+m' });
-qm.on('key', async () =&gt; {
-  const mine = await qm.messages.find({ fromMe: true, limit: 10 });
-  await qm.clipboard.write(mine.map(m =&gt; m.text).filter(Boolean).join('\n'));
-  qm.toast('Copied ' + mine.length + ' messages');
-});</code></pre>
-
-<h2 id="file">8. Plugin files</h2>
-<p>Export writes a <code>.qmplugin.json</code> file:</p>
-<pre>{
-  "id": "p3k9x2ab",
-  "name": "Message counter",
-  "version": "1.2.0",
-  "apiVersion": 1,
-  "minSite": "1.44.0",
-  "updateUrl": "https://example.com/counter.json",
-  "description": "Counts messages",
-  "author": "You",
-  "permissions": ["panel", "messages"],
-  "code": "..."
-}</pre>
-<p>Importing a file with the same id (or same name and author) <em>replaces</em> the installed one and keeps it on/off as it was. A new plugin always arrives <strong>switched off</strong> so you can read its permissions and code first.</p>
-
-<h2 id="ver">9. Versions, outdated warnings, updates</h2>
+</code></pre>
+<h3 id="square-bubbles-and-a-red-accent">Square bubbles and a red accent</h3>
+<p>Permission: <code>style</code>.</p>
+<pre><code class="language-js">await qm.style.set(`
+  :root { --accent: #e11d48; }
+  .bubble { border-radius: 4px !important; }
+`);
+</code></pre>
+<h3 id="joke-of-the-day">Joke of the day</h3>
+<p>Permissions: <code>network</code>, <code>toast</code>.</p>
+<pre><code class="language-js">const r = await qm.fetch('https://official-joke-api.appspot.com/random_joke');
+const j = await r.json();
+qm.toast(j.setup + ' ' + j.punchline);
+</code></pre>
+<h2 id="9-plugin-files">9. Plugin files</h2>
+<p><strong>Export</strong> writes a <code>.qmplugin.json</code> file:</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;p3k9x2ab&quot;,
+  &quot;name&quot;: &quot;Message counter&quot;,
+  &quot;version&quot;: &quot;1.2.0&quot;,
+  &quot;apiVersion&quot;: 1,
+  &quot;minSite&quot;: &quot;1.86.0&quot;,
+  &quot;updateUrl&quot;: &quot;https://example.com/counter.json&quot;,
+  &quot;description&quot;: &quot;Counts messages&quot;,
+  &quot;author&quot;: &quot;You&quot;,
+  &quot;permissions&quot;: [&quot;panel&quot;, &quot;messages&quot;],
+  &quot;code&quot;: &quot;...&quot;
+}
+</code></pre>
+<p>Importing a file with the same <code>id</code> (or the same name and author) replaces the installed one and keeps it on/off as it was; permissions that are new need your approval. A new plugin always arrives switched off.</p>
+<h2 id="10-versions-outdated-warnings-and-updates">10. Versions, outdated warnings and updates</h2>
 <ul>
-<li><strong>Site version</strong> (<code>qm.version</code>): shown in Account → Developer and on the Plugins page. The site checks <code>version.json</code> when it opens and every 30 minutes; if a newer version exists a bar offers <em>Reload</em>. From an offline copy the check simply can't reach the site; download a fresh copy when you want to update.</li>
-<li><strong>Plugin API version</strong> (<code>apiVersion</code>): bumped only when something a plugin relies on changes in a way that could break it. A plugin with a <em>lower</em> number than the site is shown as <strong>Outdated</strong> with a warning (it still runs). A plugin with a <em>higher</em> number, or a <code>minSite</code> newer than the site, is <strong>blocked</strong> with an explanation until you update the site.</li>
-<li>When Developer mode starts, a toast warns about every enabled plugin with a problem.</li>
-<li><strong>Plugin updates</strong>: if a plugin has an <code>updateUrl</code>, <em>Check update</em> downloads that JSON (<code>{"version": "1.3.0", "downloadUrl": "https://…"}</code>) and compares versions. It never installs anything by itself; import the new file to update.</li>
-<li>Version numbers are dotted numbers (<code>1.10.0</code> is newer than <code>1.9.2</code>).</li>
+<li><strong>Site version</strong> (<code>qm.version</code>) is shown on the Plugins tab. The site checks <code>version.json</code> when it opens and every 30 minutes; a bar offers <em>Reload</em> when a newer one exists. From an offline copy the check can't reach the site; download a fresh copy to update.</li>
+<li><strong>Plugin API version</strong> (<code>apiVersion</code>) only changes when something a plugin relies on changes in a way that could break it. A plugin with a lower number than the site is shown as <strong>Outdated</strong> (it still runs). A plugin with a higher number, or a <code>minSite</code> newer than the site, is <strong>blocked</strong> with an explanation until the site is updated.</li>
+<li>When plugins start, a toast warns about each enabled plugin that has a problem.</li>
+<li><strong>Updates</strong>: with an <code>updateUrl</code>, <em>Check update</em> downloads that JSON (<code>{"version": "1.3.0", "downloadUrl": "https://…"}</code>, optionally <code>apiVersion</code>, <code>minSite</code>) and compares versions. Nothing installs by itself: import the new file. <em>Update all</em> checks every plugin.</li>
+<li>Version numbers are dotted numbers (1.10.0 is newer than 1.9.2).</li>
 </ul>
-
-<h2 id="limits">10. Limits</h2>
+<h2 id="11-limits">11. Limits</h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Thing</th>
+<th>Limit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Plugin code</td>
+<td>200,000 characters</td>
+</tr>
+<tr>
+<td>Plugin storage</td>
+<td>100 KB</td>
+</tr>
+<tr>
+<td>CSS</td>
+<td>50,000 characters (10 named sheets)</td>
+</tr>
+<tr>
+<td>Panel</td>
+<td>30 lines, 8 buttons</td>
+</tr>
+<tr>
+<td><code>qm.chat.send</code></td>
+<td>5 per 10 seconds</td>
+</tr>
+<tr>
+<td><code>qm.beforeSend</code></td>
+<td>1 second per plugin, then the message goes unchanged</td>
+</tr>
+<tr>
+<td><code>qm.bus.emit</code></td>
+<td>20 KB</td>
+</tr>
+<tr>
+<td><code>qm.download.save</code> / <code>qm.files.pick</code></td>
+<td>5 MB / 2 MB</td>
+</tr>
+<tr>
+<td>Buttons, commands, shortcuts, windows</td>
+<td>6, 10, 10, 4 per plugin</td>
+</tr>
+</tbody>
+</table></div>
+<p>Plugins have no access to Firebase, other people's accounts or devices. They can send messages as you only with <code>send</code> / <code>beforeSend</code> / <code>editOwn</code> / <code>deleteOwn</code> / <code>unsandboxed</code>.</p>
+<h2 id="12-troubleshooting">12. Troubleshooting</h2>
 <ul>
-<li>Code: 200,000 characters. Storage: 100 KB. CSS: 50,000 characters. Panel: 30 lines, 8 buttons.</li>
-<li>Plugins run on this device whether or not Developer mode is on. Switch a plugin off to stop it.</li>
-<li>No access to Firebase, your account's data, other people's devices, or sending messages on your behalf.</li>
-<li>Plugins are not available in "private server" legacy mode on very old browsers.</li>
-</ul>
-
-<h2 id="trouble">11. Troubleshooting</h2>
-<ul>
-<li><strong>Nothing happens</strong>: is the plugin switched on? Look for a red "Crashed" line (turn on Developer mode to also see the Log on the Plugins tab).</li>
-<li><strong>"Needs the \"x\" permission"</strong>: tick that permission in the editor and save.</li>
+<li><strong>Nothing happens</strong>: is the plugin switched on and approved? Look for a red "Crashed" line (turn on Developer mode to also see the Log on the Plugins tab).</li>
+<li><strong>"Needs the "x" permission"</strong>: tick it in the editor and save, then approve the review.</li>
 <li><strong>fetch fails</strong>: add <code>network</code>; the target site must send CORS headers.</li>
 <li><strong>Style not applied</strong>: add <code>!important</code>; the site's own rules can be more specific.</li>
+<li><strong>A new call "isn't a function"</strong>: your site is older than the call's <em>Since</em> version; set <code>minSite</code> so it is blocked with a clear message instead.</li>
 </ul>
-
-<h2 id="changes">12. What changed</h2>
-<table><tr><th>API</th><th>Site</th><th>Notes</th></tr><tr><td>1</td><td>1.44.0</td><td>First version: toast, style, storage, panel, chat, me, messages, network.</td></tr><tr><td>1</td><td>1.46.0</td><td>Added (nothing existing changed, so the API number stays 1; set <code>minSite</code> to 1.46.0 when you use them): permissions <code>page</code>, <code>buttons</code>, <code>calls</code>, <code>devinfo</code>; <code>qm.page.*</code>, <code>qm.buttons.*</code>, <code>qm.calls.state</code>, <code>qm.dev.*</code>, <code>qm.ask</code>, <code>qm.sleep</code>, <code>qm.chat.open</code>; events <code>button</code>, <code>call-state</code>, <code>dev-view</code>, <code>page-load</code>.</td></tr><tr><td>1</td><td>1.48.0</td><td>Added (API number stays 1; set <code>minSite</code> to 1.48.0): permissions <code>send</code>, <code>clipboard</code>, <code>notify</code>, <code>keys</code>, <code>commands</code>; <code>qm.messages.*</code>, <code>qm.chat.getText / setText / clearText / focus / list / info / send</code>, <code>qm.commands.*</code>, <code>qm.keys.*</code>, <code>qm.banner.*</code>, <code>qm.style.vars / sheet / removeSheet / get</code>, <code>qm.clipboard.write</code>, <code>qm.notify</code>, <code>qm.vibrate</code>, <code>qm.bus.*</code>, <code>qm.app.info</code>, <code>qm.plugins.list</code>, <code>qm.every / after / now</code>, <code>qm.util.*</code>, <code>qm.storage.keys / clear / usage</code>, <code>qm.page.waitFor / text / attr / count / focus / press / select / check / hide / show / title</code>, panel <code>progress</code>; events <code>command</code>, <code>key</code>, <code>banner-button</code>, <code>bus</code>, <code>online</code>, <code>offline</code>, <code>visibility</code>, <code>theme-change</code>. Also fixed: switching a plugin off (or deleting or editing it) now takes effect immediately instead of when Developer mode is toggled.</td></tr><tr><td>1</td><td>1.49.0</td><td>Added (API stays 1; set <code>minSite</code> to 1.49.0): permissions <code>ui</code>, <code>menu</code>; <code>qm.ui.*</code>, <code>qm.messageMenu.*</code>, banner <code>where</code> (call/chat) and <code>clear()</code>; events <code>ui-action</code>, <code>ui-close</code>, <code>menu-click</code>. The panel is now a window.</td></tr><tr><td>1</td><td>1.52.0</td><td>Added (API stays 1; set <code>minSite</code> to 1.52.0): permissions <code>speech</code>, <code>sound</code>, <code>badge</code>, <code>share</code>, <code>download</code>, <code>files</code>, <code>links</code>, <code>unsandboxed</code>; <code>qm.speech / sound / badge / share / download / files / links</code>, <code>qm.permissions</code>. Plugins now need a permission review before they run.</td></tr><tr><td>1</td><td>1.85.0</td><td>Added (API stays 1; set <code>minSite</code> to 1.85.0): permissions <code>watchEdits</code>, <code>watchDeletes</code>; events <code>message-edited</code>, <code>message-deleted</code>.</td></tr><tr><td>1</td><td>1.86.0</td><td>Added (API stays 1; set <code>minSite</code> to 1.86.0): permissions <code>watchMessages</code>, <code>typing</code>, <code>unread</code>, <code>watchReads</code>, <code>watchCalls</code>; events <code>chat-message</code>, <code>typing</code>, <code>unread-change</code>, <code>message-read</code>, <code>incoming-call</code>; <code>qm.chats.unread()</code>.</td></tr></table>
+<h2 id="13-what-changed-plugin-api-history">13. What changed (plugin API history)</h2>
+<p>The API number stays <strong>1</strong>: every addition so far is optional, so a plugin only needs <code>minSite</code> set to the highest <em>Since</em> it uses.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Site</th>
+<th>Added</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1.44.0</td>
+<td>First version: <code>toast</code>, <code>style</code>, <code>panel</code>, <code>me</code>, <code>chat</code>, <code>messages</code>, <code>network</code>; storage, <code>qm.on</code>.</td>
+</tr>
+<tr>
+<td>1.46.0</td>
+<td><code>page</code>, <code>buttons</code>, <code>calls</code>, <code>devinfo</code>; <code>qm.page.*</code>, <code>qm.buttons.*</code>, <code>qm.calls.state</code>, <code>qm.dev.*</code>, <code>qm.ask</code>, <code>qm.sleep</code>, <code>qm.chat.open</code>; events <code>button</code>, <code>call-state</code>, <code>dev-view</code>, <code>page-load</code>.</td>
+</tr>
+<tr>
+<td>1.48.0</td>
+<td><code>send</code>, <code>clipboard</code>, <code>notify</code>, <code>keys</code>, <code>commands</code>; <code>qm.messages.*</code>, <code>qm.chat.*</code> (text box, list, info, send), <code>qm.commands</code>, <code>qm.keys</code>, <code>qm.banner</code>, <code>qm.style.vars / sheet</code>, <code>qm.bus</code>, <code>qm.app.info</code>, <code>qm.plugins.list</code>, <code>qm.every / after / now</code>, <code>qm.util</code>, more <code>qm.page.*</code>; events <code>command</code>, <code>key</code>, <code>banner-button</code>, <code>bus</code>, <code>online</code>, <code>offline</code>, <code>visibility</code>, <code>theme-change</code>.</td>
+</tr>
+<tr>
+<td>1.49.0</td>
+<td><code>ui</code>, <code>menu</code>; <code>qm.ui.*</code>, <code>qm.messageMenu.*</code>, banner <code>where</code>; events <code>ui-action</code>, <code>ui-close</code>, <code>menu-click</code>.</td>
+</tr>
+<tr>
+<td>1.52.0</td>
+<td><code>speech</code>, <code>sound</code>, <code>badge</code>, <code>share</code>, <code>download</code>, <code>files</code>, <code>links</code>, <code>unsandboxed</code>; <code>qm.permissions</code>. Plugins need a permission review before they run.</td>
+</tr>
+<tr>
+<td>1.82.0</td>
+<td><code>triggers</code>, <code>messageView</code>, <code>editOwn</code>, <code>deleteOwn</code>; <code>qm.triggers</code>, <code>qm.messageView</code>, <code>qm.messages.edit / delete</code>; event <code>trigger-pick</code>.</td>
+</tr>
+<tr>
+<td>1.84.0</td>
+<td><code>say</code>, <code>beforeSend</code>; <code>qm.messages.say</code>, <code>qm.beforeSend</code>, <code>qm.settings.*</code>; event <code>settings-change</code>. Plugins got their own Settings tab, work with Developer mode off, grouped permissions.</td>
+</tr>
+<tr>
+<td>1.85.0</td>
+<td><code>watchEdits</code>, <code>watchDeletes</code>; events <code>message-edited</code>, <code>message-deleted</code>.</td>
+</tr>
+<tr>
+<td>1.86.0</td>
+<td><code>watchMessages</code>, <code>typing</code>, <code>unread</code>, <code>watchReads</code>, <code>watchCalls</code>; events <code>chat-message</code>, <code>typing</code>, <code>unread-change</code>, <code>message-read</code>, <code>incoming-call</code>; <code>qm.chats.unread()</code>.</td>
+</tr>
+</tbody>
+</table></div>
+<p><em>Keeping this current:</em> when you add a permission, call or event, add it to the tables above with its <strong>Since</strong> version and a line in section 13, then run <code>python3 tools/build-docs.py</code>.</p>
   </main>
 </div>
 <script type="module" src="js/bars.js"></script>

@@ -1,4 +1,4 @@
-// Plugin host (runs in the app shell, only while Developer mode is on).
+// Plugin host (runs in the app shell; plugins work with Developer mode off).
 // Every enabled plugin runs inside its own sandboxed <iframe> (no access to this page, your account, cookies or storage) and talks to the
 // site only through the messages handled here. Each call is checked against the permissions the plugin declared. Docs: plugin-docs.html
 import { devOn, onDev, envInfo } from "./dev.js";

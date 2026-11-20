@@ -2,6 +2,13 @@
 
 Newest first. Older rounds (1–43) are kept below exactly as they were written.
 
+## 1.87.1 — plugin and bot docs rewritten, now generated from Markdown
+
+- `docs/PLUGINS.md` is a complete rewrite that matches how plugins work now: the Plugins tab and its buttons, grouped permission review, plugin settings, working without Developer mode, hidden logs, every permission / call / event in tables with a **Since** site version (so `minSite` stays correct), limits, troubleshooting and the full version history.
+- `docs/BOTS.md` is the bot reference (it already had the call routes the old page lacked).
+- `plugin-docs.html` and `bot-docs.html` are now **generated from those Markdown files** by `python3 tools/build-docs.py`, so the repo docs and the in-app pages can't disagree any more (the old bot page was missing the call routes).
+- Fixed a stale comment in `js/plugins.js`.
+
 ## 1.87.0 — new repository, secrets kept out of git
 
 - Every link to the source now points to the new repository **BlueToadMakerr/QuickMessage** (README, Account → About / Suggest on GitHub, the welcome tour, docs).
