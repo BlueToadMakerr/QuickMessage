@@ -1,0 +1,70 @@
+# Generated into QuickMessage.xcodeproj by XcodeGen (the GitHub workflow does this): no .xcodeproj is kept in the repo.
+name: QuickMessage
+options:
+  bundleIdPrefix: app.quickmessage
+  deploymentTarget:
+    iOS: "15.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  QuickMessageBroadcast:
+    type: app-extension
+    platform: iOS
+    sources:
+      - QuickMessageBroadcast
+    dependencies:
+      - sdk: ReplayKit.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.quickmessage.chat.broadcast
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
+    info:
+      path: QuickMessageBroadcast/Info.plist
+      properties:
+        CFBundleDisplayName: QuickMessage Screen
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.broadcast-services-upload
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).SampleHandler
+          RPBroadcastProcessMode: RPBroadcastProcessModeSampleBuffer
+  QuickMessage:
+    type: application
+    platform: iOS
+    sources:
+      - path: QuickMessage
+    dependencies:
+      - target: QuickMessageBroadcast
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.quickmessage.chat
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+    info:
+      path: QuickMessage/Info.plist
+      properties:
+        CFBundleDisplayName: QuickMessage
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIBackgroundModes:
+          - audio
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true                  # a private server is usually plain http on the local network
+        NSCameraUsageDescription: QuickMessage uses the camera for video calls and to send photos.
+        NSMicrophoneUsageDescription: QuickMessage uses the microphone for calls and voice messages.
+        NSPhotoLibraryUsageDescription: QuickMessage lets you pick photos and videos to send.
+        ITSAppUsesNonExemptEncryption: false

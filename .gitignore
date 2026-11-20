@@ -1,0 +1,26 @@
+# Secrets: never committed, never in a public repo. They are kept on your server and in GitHub Actions secrets instead.
+# The import workflow also skips these and removes them from the history if they ever got committed.
+secrets.php
+secrets.*.php
+*.secret.php
+.env
+.env.*
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+serviceAccount*.json
+*firebase-adminsdk*.json
+# Zip / encrypted uploads only live in incoming/ for a moment
+*.zip
+*.qmenc
+!incoming/*.zip
+!incoming/*.qmenc
+!incoming/.keep
+android/build/
+android/app/build/
+android/.gradle/
+ios/*.xcodeproj/
+ios/build/

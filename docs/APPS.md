@@ -1,0 +1,58 @@
+# Android and iPhone apps
+
+Both apps are thin native shells around the website (`android/`, `ios/`). One workflow, `.github/workflows/quickmessage.yml`, builds everything:
+
+```
+prepare (what changed? unpack an uploaded zip) ─┬─► site  (website → FTP)
+                                                ├─► android (APK) ──► publish (APK / iOS files → FTP)
+                                                ├─► ios (unsigned IPA)
+                                                └─► ios-sim
+```
+- **Importing:** upload the **encrypted** zip (`quickmessage-callNN.qmenc`, made with `tools/encrypt-zip.sh`) into `incoming/`; the matching parts run (Android build if `android/` changed, iOS if `ios/`, website upload otherwise) and files that are not in the zip any more are removed. The workflow decrypts it with the repository secret `QM_ZIP_KEY` (the private RSA key: Settings → Secrets and variables → Actions → New repository secret, whole key text including the BEGIN/END lines). The import commit is named after the version in `docs/CHANGELOG.md`; all `*.zip` / `*.qmenc` files are removed from the git history afterwards (force-push, `[skip ci]`). GitHub still serves old commits by hash, which is why the upload is encrypted. A plain `.zip` still imports but logs a warning.
+- **Manual runs** ("Run workflow") only import a waiting `incoming/*.qmenc`; with none they exit without building or deploying anything.
+- Ordinary pushes build / upload only what they touched.
+- Build number = 1000 + workflow run number (`versionCode` / `BUILD`).
+- Repository secrets: `FTP_SERVER`, `FTP_USERNAME`, `FTP_PASSWORD`, `FTP_DIR`, optional `FTP_PROTOCOL`, `FTP_PORT`, `WORKFLOW_PAT` (lets the importer update `.github`).
+- Site address: `Config.SITE_URL` in `android/.../Api.kt`, `siteURL` in `ios/QuickMessage/WebView.swift`.
+- Details for Android: [`android/README.md`](../android/README.md).
+
+The apps are built for the Firebase setup. They do **not** support the [private server](SERVER-PRIVATE.md).
+The Android and iPhone code is not compiled or run in the environment where it is written; the workflow is the first real build.
+
+## Private server
+Both apps can point at a [private Python server](SERVER-PRIVATE.md) instead of Firebase: on the login screen, **Use a private server instead of Firebase**. Android stores it in `Config`, iOS in UserDefaults `qmServer`. Untested on real devices.
+
+## Android Auto
+Messages: new-message notifications are `MessagingStyle` notifications with the two actions Android Auto needs — a voice **Reply** and **Mark as read** (both run in the background service, so they do not open the app) — and `res/xml/automotive_app_desc.xml` declares the app as a notification-based messaging app. In the car the messages are read aloud and you can answer by voice (not in end-to-end encrypted chats that this phone has no key for, same as the phone's own Reply button).
+
+Calls: ringing and running calls are also registered with Android's Telecom framework as self-managed calls (`Telecomm.kt`, `QmConnectionService`), next to the existing incoming-call / ongoing-call notifications. The car, a Bluetooth headset or the system can then show the call, **answer**, **decline**, **hang up** and **mute**; those requests do exactly what the notification buttons do. If the system refuses (old Android, missing permission) nothing else changes.
+
+Honest limits: Android Auto only offers third-party voice-call screens to apps approved for it by Google, so how much of the call UI shows in a given car can differ; the call itself still runs in the app (WebView), and the audio goes through the phone's normal call audio. None of this was compiled or tried in a car here — please test it with the Android Auto desktop head unit or a real car and report what is missing.
+
+
+## Uploads when the app is closed
+
+- **Android:** closing the app from the recent-apps list while a file uploads leaves the uploading page running in the background (foreground notification) until it finishes; reopening shows the file as "Uploading…".
+- **iPhone:** uploads continue while the app is in the background (the silent-audio trick), but not after the app is swiped away in the app switcher: iOS does not allow that for a web page. The next start says which file was not finished.
+
+## Android notifications: push (no standing connection)
+
+The Android app uses **Firebase Cloud Messaging** instead of keeping a connection open:
+
+1. After sign-in the app stores its FCM token at `FCM/{uid}/{token} = "android"` (`Push.kt`).
+2. A new message / ring makes the Cloud Function (`functions/index.js`) send a **data-only, high-priority** push to those tokens (browser tokens still get a normal notification push).
+3. `PushService` receives it and wakes `NotifyService` for a few seconds: it reads the newest message, rebuilds the thread from the database, loads names / pictures, decrypts, and posts the real notification (reply, mark as read, bubble, full-screen call alert). Then the service stops.
+
+Set-up (once):
+- Firebase console → Project settings → Your apps → **Add app → Android**, package `app.quickmessage.chat` → download `google-services.json`.
+- GitHub → Settings → Secrets → **`GOOGLE_SERVICES_JSON`** = the file's contents (or base64 of it). The Android build writes it to `android/app/`.
+- `firebase deploy --only functions` (Blaze plan, as before) and publish `database.rules.json`.
+
+Without `google-services.json` (or with a private server, or without Google Play services) the app still works and falls back to the earlier live connection (a quiet "Listening for messages and calls" notification). With push active that notification is gone.
+
+Notification threads are rebuilt from the database each time, so they match the chat even after a missed push or after answering in the app. iPhone still uses the in-app keep-alive (real push there needs APNs and a paid Apple Developer account).
+
+## Secrets stay private
+- `.gitignore`, the import step and the website upload all use one list of secret files: `secrets.php`, `secrets.*.php`, `*.secret.php`, `.env*`, `*.jks`, `*.keystore`, `*.p12`, `*.mobileprovision`, `google-services.json`, `GoogleService-Info.plist`, Firebase service-account json. They are never committed, never imported from a zip and removed from the git history if they ever were.
+- The website upload leaves the copies on your server alone (the server's `secrets.php` stays exactly as you put it there over FTP). The Android build gets its signing key from the `ANDROID_KEYSTORE_B64` / `ANDROID_STORE_PASS` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASS` secrets (`base64 -w0 quickmessage.jks`); without them the build stops with a clear message. Keep using the same key: a new one stops existing installs from updating.
+- Repository: https://github.com/BlueToadMakerr/QuickMessage

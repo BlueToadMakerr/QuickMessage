@@ -16,7 +16,8 @@ name: QuickMessage
 # (ftp | ftps | ftps-legacy, default ftp), FTP_PORT (default 21). Without them the builds still run (downloadable as artifacts) and the upload is skipped.
 # Optional signing secrets: ANDROID_KEYSTORE_B64, ANDROID_STORE_PASS, ANDROID_KEY_ALIAS, ANDROID_KEY_PASS.
 # Optional WORKFLOW_PAT (personal access token with "repo" + "workflow"): lets the import also update files in .github/workflows/.
-# secrets.php is never in the repo and never uploaded: keep the copy that is already on your server.
+# Secret files (secrets.php, keystores, .env, google-services.json ... same list as .gitignore) are never committed and never uploaded by this workflow:
+# keep the copy that is already on your server; the Android signing key and google-services.json come from the Actions secrets above.
 on:
   push:
     branches: [main, master]
@@ -110,13 +111,17 @@ jobs:
           # a zip made as one top-level folder: use what is inside it
           if [ ! -e "$src/index.html" ] && [ "$(ls -1 "$src" | wc -l)" -eq 1 ] && [ -d "$src/$(ls -1 "$src")" ]; then src="$src/$(ls -1 "$src")"; fi
           if [ ! -e "$src/index.html" ]; then echo "::error::The zip doesn't look like a QuickMessage project (no index.html)."; exit 1; fi
-          excludes=(--exclude=/.git/ --exclude=/incoming/ --exclude='*.zip' --exclude='*.qmenc' --exclude=/secrets.php)       # secrets.php holds the Firebase private key: it is never committed
+          # Secrets are never copied into the repo (the copies on your server / in GitHub Actions secrets are the real ones). Same list as .gitignore.
+          secretpats=(secrets.php 'secrets.*.php' '*.secret.php' .env '.env.*' '*.jks' '*.keystore' '*.p12' '*.mobileprovision' google-services.json GoogleService-Info.plist 'serviceAccount*.json' '*firebase-adminsdk*.json')
+          excludes=(--exclude=/.git/ --exclude=/incoming/ --exclude='*.zip' --exclude='*.qmenc')
+          for sp in "${secretpats[@]}"; do excludes+=(--exclude="$sp"); done
           if [ "$HAS_PAT" != "true" ]; then excludes+=(--exclude=/.github/); echo "::notice::No WORKFLOW_PAT secret: .github/ is left as it is."; fi
           # The zip is the whole project, so files that are not in it any more are deleted too (excluded paths above are never touched).
           rsync -a --delete "${excludes[@]}" "$src"/ ./
           rm -f incoming/*.zip incoming/*.qmenc
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git ls-files -ci --exclude-standard -z | xargs -0 -r git rm --cached -q --      # anything ignored (secrets) that an older commit tracked is untracked now
           git add -A
           committed=false
           if git diff --cached --quiet; then echo "No changes in the project."; else
@@ -148,10 +153,10 @@ jobs:
           # Zips never stay in the history, and neither does secrets.php (it holds the Firebase private key): every *.zip / *.qmenc / secrets.php that was ever committed (the upload itself, older imports) is removed from ALL commits,
           # then the cleaned branch is force-pushed. The rewritten tip carries "[skip ci]" so this does not start another workflow.
           url="https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          if [ -n "$(git rev-list --all --max-count=1 -- '*.zip' '*.qmenc' secrets.php)" ]; then
+          if [ -n "$(git rev-list --all --max-count=1 -- '*.zip' '*.qmenc' secrets.php '*.jks' '*.keystore' google-services.json)" ]; then
             echo "Removing zip files from the whole history..."
             pip install --quiet git-filter-repo
-            git filter-repo --force --invert-paths --path-glob '*.zip' --path-glob '*.qmenc' --path secrets.php
+            git filter-repo --force --invert-paths --path-glob '*.zip' --path-glob '*.qmenc' --path secrets.php --path-glob '*.jks' --path-glob '*.keystore' --path google-services.json
             if [ "$committed" != "true" ]; then
               git commit -q --allow-empty -m "Remove uploaded zip from the history" -m "[skip ci]"
             fi
@@ -262,6 +267,12 @@ jobs:
         with: { distribution: temurin, java-version: 17 }
       - uses: gradle/actions/setup-gradle@v4
         with: { gradle-version: 8.14.3 }
+      - name: Signing key check
+        if: env.HAS_KS != 'true'
+        run: |
+          if [ ! -f android/app/quickmessage.jks ]; then
+            echo "::error::No Android signing key. The keystore is no longer kept in the repo: add the repository secrets ANDROID_KEYSTORE_B64 (base64 -w0 of your quickmessage.jks), ANDROID_STORE_PASS, ANDROID_KEY_ALIAS and ANDROID_KEY_PASS. (A different key would stop existing installs from updating.)"; exit 1
+          fi
       - name: Use your own signing key (optional secrets)
         if: env.HAS_KS == 'true'
         env:
@@ -350,4 +361,104 @@ jobs:
             ios/QuickMessage.tipa
           compression-level: 0
 
-  # ------------------------------------------------------------------ iOS Simulator build (its own
+  # ------------------------------------------------------------------ iOS Simulator build (its own runner, so it doesn't make the device build wait)
+  ios-sim:
+    needs: prepare
+    if: needs.prepare.outputs.ios == 'true'
+    runs-on: macos-latest
+    env:
+      NAME: 1.0.${{ github.run_number }}
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
+      HOMEBREW_NO_ENV_HINTS: 1
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ github.ref_name }}" }
+      - name: Build for the iOS Simulator
+        working-directory: ios
+        run: |
+          BUILD=$((1000 + GITHUB_RUN_NUMBER))
+          brew install xcodegen
+          xcodegen generate
+          # boot a simulator, then: xcrun simctl install booted QuickMessage.app && xcrun simctl launch booted app.quickmessage.chat
+          xcodebuild -project QuickMessage.xcodeproj -scheme QuickMessage \
+            -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build-sim ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION=$BUILD MARKETING_VERSION=$NAME \
+            build | tail -n 40
+          mkdir -p sim && cp -R build-sim/Build/Products/Debug-iphonesimulator/QuickMessage.app sim/
+          ditto -c -k --keepParent sim/QuickMessage.app QuickMessage-simulator.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quickmessage-ios-simulator
+          path: ios/QuickMessage-simulator.zip
+          compression-level: 0
+
+  # ------------------------------------------------------------------ app files -> FTP (after the builds; the site upload, if any, is already done by then)
+  publish:
+    needs: [prepare, site, android, ios, ios-sim]
+    if: always() && needs.prepare.result == 'success' && (needs.android.result == 'success' || needs.ios.result == 'success')
+    runs-on: ubuntu-latest
+    env:
+      HAS_FTP: ${{ secrets.FTP_SERVER != '' && secrets.FTP_USERNAME != '' && secrets.FTP_PASSWORD != '' }}
+      FTP_DIR_RAW: ${{ secrets.FTP_DIR }}
+      RUN: ${{ github.run_number }}
+    steps:
+      - name: No FTP secrets
+        if: env.HAS_FTP != 'true'
+        run: echo "::notice::FTP_SERVER / FTP_USERNAME / FTP_PASSWORD are not set, so nothing is uploaded. The builds are in this run's artifacts."
+      - name: Server folder
+        if: env.HAS_FTP == 'true'
+        id: d
+        run: d="${FTP_DIR_RAW:-./}"; case "$d" in */) ;; *) d="$d/";; esac; echo "dir=$d" >> "$GITHUB_OUTPUT"
+      - name: Get the builds
+        if: env.HAS_FTP == 'true'
+        uses: actions/download-artifact@v4
+        with: { path: builds }
+        continue-on-error: true
+      - name: Version files
+        if: env.HAS_FTP == 'true'
+        run: |
+          code=$((1000 + RUN)); name="1.0.$RUN"; built=$(date -u +%FT%TZ)
+          htaccess='AddType application/vnd.android.package-archive .apk\nAddType application/octet-stream .ipa\nAddType application/octet-stream .tipa\n'
+          mkdir -p dl-android dl-ios
+          if [ "${{ needs.android.result }}" = "success" ] && [ -f builds/quickmessage-debug/app-debug.apk ]; then
+            mv builds/quickmessage-debug/app-debug.apk dl-android/quickmessage.apk
+            jq -n --argjson code "$code" --arg name "$name" --argjson size "$(stat -c%s dl-android/quickmessage.apk)" --arg built "$built" \
+              '{versionCode:$code, versionName:$name, url:"downloads/quickmessage.apk", size:$size, built:$built}' > dl-android/android.json
+            printf "$htaccess" > dl-android/.htaccess
+            cat dl-android/android.json
+          fi
+          if [ "${{ needs.ios.result }}" = "success" ] && [ -d builds/quickmessage-ios ]; then
+            mv builds/quickmessage-ios/* dl-ios/
+            sim=""; if [ -f builds/quickmessage-ios-simulator/QuickMessage-simulator.zip ]; then mv builds/quickmessage-ios-simulator/QuickMessage-simulator.zip dl-ios/; sim="downloads/QuickMessage-simulator.zip"; fi
+            jq -n --argjson code "$code" --arg name "$name" --arg built "$built" --arg sim "$sim" \
+              '{versionCode:$code, versionName:$name, url:"downloads/QuickMessage-unsigned.ipa", tipa:"downloads/QuickMessage.tipa", built:$built} + (if $sim != "" then {simulator:$sim} else {} end)' > dl-ios/ios.json
+            printf "$htaccess" > dl-ios/.htaccess
+            ls -la dl-ios; cat dl-ios/ios.json
+          fi
+      - name: Upload the Android files
+        if: env.HAS_FTP == 'true' && needs.android.result == 'success'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ${{ secrets.FTP_PROTOCOL || 'ftp' }}
+          port: ${{ secrets.FTP_PORT || '21' }}
+          server-dir: ${{ steps.d.outputs.dir }}downloads/
+          local-dir: dl-android/
+          state-name: .ftp-state-android.json
+      - name: Upload the iOS files
+        if: env.HAS_FTP == 'true' && needs.ios.result == 'success'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ${{ secrets.FTP_PROTOCOL || 'ftp' }}
+          port: ${{ secrets.FTP_PORT || '21' }}
+          server-dir: ${{ steps.d.outputs.dir }}downloads/
+          local-dir: dl-ios/
+          state-name: .ftp-state-ios.json

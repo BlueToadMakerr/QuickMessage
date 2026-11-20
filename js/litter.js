@@ -1,0 +1,194 @@
+// Litterbox uploads (https://litterbox.catbox.moe): anonymous, temporary. We always ask for the longest retention (72 h).
+// Relay (upload.php) when the file fits, for a real progress bar; otherwise a direct *simple* POST (no CORS preflight). Each falls back to the other.
+import { auth } from "./firebase.js";
+
+const API = "https://litterbox.catbox.moe/resources/internals/api.php";
+export const RETENTION = "72h";
+export const RETENTION_MS = 72 * 3600 * 1000;
+export const MAX_BYTES = 1000 * 1024 * 1024;           // Litterbox's limit is 1 GB
+import { PRIVATE as PRIVATE_FILES } from "./mode.js";
+const HOST_RE = /^https:\/\/(?:litter\.catbox\.moe|files\.catbox\.moe|oshi\.at|tmpfile\.link|(?:www\.)?file\.io|0x0\.st|tempfile\.org|(?:h|a|d)\.uguu\.se|tmpfiles\.org|filebin\.net)\/[\w.\-\/%~+]+$/i;      // every file host we accept links from (see hosts.js)
+
+const rand16 = () => {
+  const a = crypto.getRandomValues(new Uint8Array(16)), c = "abcdefghijklmnopqrstuvwxyz0123456789";
+  return Array.from(a, x => c[x % 36]).join("");
+};
+const extOf = f => {
+  const m = /\.([A-Za-z0-9]{1,8})$/.exec(f.name || "");
+  if (m) return "." + m[1].toLowerCase();
+  const t = (f.type || "").split("/")[1];
+  return t ? "." + t.replace(/[^a-z0-9].*$/i, "") : "";
+};
+
+/** Is this URL one we'd render? (only links to our file hosts: Litterbox, oshi.at, tmpfile.link, file.io) */
+export const isLitterUrl = u => typeof u === "string" && u.length <= 300 && (HOST_RE.test(u) || (PRIVATE_FILES && /^https?:\/\/[^\/\s]+\/files\/[\w.\-%]+$/.test(u)));
+
+export const kindOf = mime => (mime || "").startsWith("image/") ? "image" : (mime || "").startsWith("video/") ? "video" : (mime || "").startsWith("audio/") ? "audio" : "file";
+
+// Same-origin proxy upload: XHR so we can report real progress (no CORS involved, so upload listeners are safe here).
+function postProxy(form, onProgress, signal) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open("POST", "upload.php");
+    x.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+    x.onload = () => {
+      const text = x.responseText || "";
+      if (x.status >= 200 && x.status < 300) resolve(text.trim());
+      else reject(Object.assign(new Error(text.trim().slice(0, 200) || "Upload failed (" + x.status + ")"), { http: x.status }));
+    };
+    x.onerror = () => reject(new Error("Couldn't reach the upload helper (network error)."));
+    if (signal) signal.addEventListener("abort", () => { x.abort(); reject(Object.assign(new Error("Cancelled"), { aborted: true })); }, { once: true });
+    x.send(form);
+  });
+}
+
+// Direct upload: a *simple* cross-origin POST (no custom headers, no upload listeners) so the browser sends no
+// preflight. Litterbox answers OPTIONS with 405, so anything that triggers a preflight (like xhr.upload.onprogress) breaks.
+// The trade-off is that the browser can't report progress for this path (onProgress(null) = indeterminate).
+async function postDirect(form, signal) {
+  const r = await fetch(API, { method: "POST", body: form, signal, credentials: "omit", referrerPolicy: "no-referrer" });
+  const t = (await r.text()).trim();
+  if (!r.ok) throw Object.assign(new Error(t || "Litterbox error (" + r.status + ")"), { http: r.status });
+  return t;
+}
+
+let limitP = null;
+/** Largest file the upload.php relay can take (bytes), or 0 if the relay is unavailable. */
+const relayLimit = () => limitP ||= fetch("upload.php?limits", { cache: "no-store" })
+  .then(r => r.ok ? r.json() : { max: 0 }).then(j => +j.max || 0).catch(() => 0);
+
+/**
+ * Uploads via the same-origin relay when the file fits (real progress), otherwise directly (progress unknown).
+ * Each route falls back to the other when it can.
+ * @param {File} file
+ * @param {(fraction:number|null)=>void} [onProgress] fraction 0..1, or null when progress isn't measurable
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{url:string, name:string, size:number, mime:string, kind:string, expiresAt:number}>}
+ */
+export async function uploadToLitterbox(file, onProgress, signal, ttl = 72 * 3600) {
+  const time = ttl <= 3600 ? "1h" : ttl <= 12 * 3600 ? "12h" : ttl <= 24 * 3600 ? "24h" : "72h";
+  if (file.size > MAX_BYTES) throw new Error("That file is over Litterbox's 1 GB limit.");
+  const stored = rand16() + extOf(file);                 // 16-character name, original name kept only in the chat message
+  const build = () => {
+    const f = new FormData();
+    f.append("reqtype", "fileupload");
+    f.append("time", time);
+    f.append("fileNameLength", "16");
+    f.append("fileToUpload", file, stored);
+    return f;
+  };
+  const viaRelay = async () => {
+    const f = build();
+    f.append("idToken", await auth.currentUser.getIdToken());
+    f.append("host", "litterbox"); f.append("ttl", String(ttl)); f.append("json", "1");
+    onProgress && onProgress(0);
+    return postProxy(f, onProgress, signal);
+  };
+  const viaDirect = async () => {
+    onProgress && onProgress(null);
+    try { return await postDirect(build(), signal); }
+    catch (e) { if (e.name === "AbortError") throw Object.assign(new Error("Cancelled"), { aborted: true }); throw e; }
+  };
+  const max = await relayLimit();
+  const fits = max > 0 && file.size <= max;
+  let text;
+  if (fits) {
+    try { text = await viaRelay(); }
+    catch (e) { if (e.aborted) throw e; text = await viaDirect().catch(() => { throw e; }); }
+  } else {
+    try { text = await viaDirect(); }
+    catch (e) {
+      if (e.aborted || e.http) throw e;
+      throw new Error("Couldn't reach Litterbox from this browser" + (max ? ", and this file is too big for the upload helper (" + fmtBytes(max) + " max)." : "."));
+    }
+  }
+  let url = text, secs = ttl;
+  if (text.startsWith("{")) { try { const j = JSON.parse(text); url = String(j.url || ""); secs = +j.expiresIn || ttl; } catch (_) { /* plain text */ } }
+  if (!HOST_RE.test(url)) throw new Error("Litterbox didn't accept that file: " + text.slice(0, 120));
+  return { url, name: file.name || stored, size: file.size, mime: file.type || "application/octet-stream", kind: kindOf(file.type), expiresAt: Date.now() + secs * 1000 };
+}
+
+export function fmtBytes(n) {
+  if (n < 1024) return n + " B";
+  if (n < 1048576) return (n / 1024).toFixed(0) + " KB";
+  if (n < 1073741824) return (n / 1048576).toFixed(1) + " MB";
+  return (n / 1073741824).toFixed(2) + " GB";
+}
+
+/** Upload through this site's relay (upload.php) to another host (oshi / tmpfile / fileio). `ttl` = the retention (seconds) the host will use. */
+export async function uploadViaRelay(host, file, ttl, onProgress, signal) {
+  const max = await relayLimit();
+  if (!max || file.size > max) throw new Error("This site's upload helper can't take a file this big" + (max ? " (" + fmtBytes(max) + " max)." : "."));
+  const stored = rand16() + extOf(file);
+  const f = new FormData();
+  f.append("host", host); f.append("ttl", String(ttl)); f.append("json", "1");
+  f.append("idToken", await auth.currentUser.getIdToken());
+  f.append("fileToUpload", file, stored);
+  onProgress && onProgress(0);
+  const text = await postProxy(f, onProgress, signal);
+  let j = null; try { j = JSON.parse(text); } catch (_) { /* not JSON */ }
+  const url = j && String(j.url || "");
+  if (!url || !HOST_RE.test(url)) throw new Error("The file host didn't accept that file: " + text.slice(0, 120));
+  return { url, name: file.name || stored, size: file.size, mime: file.type || "application/octet-stream", kind: kindOf(file.type), expiresAt: Date.now() + (+j.expiresIn || ttl) * 1000 };
+}
+export const relayMax = () => relayLimit();
+
+// file.io and tmpfile.link answer browsers directly (CORS is allowed), so big files don't have to squeeze through this site's small upload limit.
+const DIRECT = {
+  fileio: { url: "https://file.io/", fields: (f, ttl) => { f.append("expires", Math.round(ttl / 86400) + "d"); f.append("autoDelete", "false"); f.append("maxDownloads", "1000"); }, file: "file" },
+  tmpfile: { url: "https://tmpfile.link/api/upload", fields: () => {}, file: "file" },
+  catbox: { url: "https://catbox.moe/user/api.php", fields: f => { f.append("reqtype", "fileupload"); }, file: "fileToUpload" },
+  uguu: { url: "https://uguu.se/upload", fields: () => {}, file: "files[]" },
+  // tmpfiles.org answers with a page link (tmpfiles.org/123/name); the file itself is at tmpfiles.org/dl/123/name
+  tmpfiles: { url: "https://tmpfiles.org/api/v1/upload", fields: () => {}, file: "file", fixUrl: u => u.replace(/^http:/, "https:").replace(/^(https:\/\/tmpfiles\.org)\/(?!dl\/)/, "$1/dl/") },
+  // filebin.net takes a plain PUT of the file to /<bin>/<name>; we pick a random bin, so the link is the address we sent it to
+  filebin: { put: true, base: "https://filebin.net/" }
+};
+const pickUrl = text => {
+  let j = null; try { j = JSON.parse(text); } catch (_) { /* not JSON */ }
+  if (j && typeof j === "object") {
+    for (const k of ["link", "downloadLink", "url", "download_url"]) if (typeof j[k] === "string" && j[k]) return j[k];
+    if (Array.isArray(j.files) && j.files[0] && typeof j.files[0].url === "string") return j.files[0].url;
+    if (j.data && typeof j.data === "object") for (const k of ["link", "downloadLink", "url"]) if (typeof j.data[k] === "string" && j.data[k]) return j.data[k];
+    if (j.success === false) throw Object.assign(new Error(String(j.message || j.error || "The file host refused the file.")), { http: 400 });
+  }
+  const m = /https:\/\/\S+/.exec(text);
+  return m ? m[0].replace(/["'<>.,;]+$/, "") : "";
+};
+/** Straight from the browser to fileio / tmpfile. A network / CORS failure has no `http` code, so the caller may fall back to the relay. */
+export function uploadDirectHost(host, file, ttl, onProgress, signal) {
+  const d = DIRECT[host];
+  if (!d) return Promise.reject(new Error("No direct upload for " + host));
+  if (d.put) return new Promise((resolve, reject) => {
+    const bin = rand16() + rand16().slice(0, 4), stored = rand16() + extOf(file), url = d.base + bin + "/" + stored;
+    const x = new XMLHttpRequest();
+    x.open("PUT", url);
+    x.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    x.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+    x.onload = () => {
+      if (x.status < 200 || x.status >= 300) return reject(Object.assign(new Error((x.responseText || "").slice(0, 200) || "The file host answered " + x.status + "."), { http: x.status }));
+      resolve({ url, name: file.name || "file", size: file.size, mime: file.type || "application/octet-stream", kind: kindOf(file.type), expiresAt: Date.now() + ttl * 1000 });
+    };
+    x.onerror = () => reject(new Error("Couldn't reach " + new URL(d.base).host + " from the browser."));
+    if (signal) signal.addEventListener("abort", () => { x.abort(); reject(Object.assign(new Error("Cancelled"), { aborted: true })); }, { once: true });
+    onProgress && onProgress(0);
+    x.send(file);
+  });
+  return new Promise((resolve, reject) => {
+    const f = new FormData(); d.fields(f, ttl); f.append(d.file, file, file.name || "file");
+    const x = new XMLHttpRequest();
+    x.open("POST", d.url);
+    x.upload.onprogress = e => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+    x.onload = () => {
+      const text = x.responseText || "";
+      if (x.status < 200 || x.status >= 300) return reject(Object.assign(new Error(text.slice(0, 200) || "The file host answered " + x.status + "."), { http: x.status }));
+      let url = ""; try { url = pickUrl(text); if (d.fixUrl) url = d.fixUrl(url); } catch (e) { return reject(e); }
+      if (!HOST_RE.test(url)) return reject(Object.assign(new Error("The file host didn't return a usable link: " + text.slice(0, 120)), { http: 502 }));
+      resolve({ url, name: file.name || "file", size: file.size, mime: file.type || "application/octet-stream", kind: kindOf(file.type), expiresAt: Date.now() + ttl * 1000 });
+    };
+    x.onerror = () => reject(new Error("Couldn't reach " + new URL(d.url).host + " from the browser."));
+    if (signal) signal.addEventListener("abort", () => { x.abort(); reject(Object.assign(new Error("Cancelled"), { aborted: true })); }, { once: true });
+    onProgress && onProgress(0);
+    x.send(f);
+  });
+}
