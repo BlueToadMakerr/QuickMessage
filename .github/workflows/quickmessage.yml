@@ -1,0 +1,353 @@
+name: QuickMessage
+# ONE workflow for everything. It looks at what happened and runs only the parts that are needed:
+#
+#   prepare (what changed? unpack an uploaded zip) ─┬─► site  (website → FTP)  ──────────────┐
+#                                                    ├─► android (APK) ─────────────────────────┼─► publish (APK / iOS files → FTP)
+#                                                    ├─► ios (.ipa + .tipa) ────────────────────┤
+#                                                    └─► ios-sim (simulator build, in parallel) ┘
+#
+#  • Upload quickmessage-callNN.qmenc (the encrypted zip, see tools/encrypt-zip.sh; needs the secret QM_ZIP_KEY) or a plain .zip into incoming/ (GitHub → Add file → Upload files): it is unpacked over the project and committed (named after the version in docs/CHANGELOG.md, e.g. "v1.82.2 — title"),
+#    every *.zip is removed from the whole git history (force-push, marked [skip ci] so it starts nothing else), then
+#    the parts that changed are built / uploaded: Android build if android/ changed, iOS build if ios/ changed, website upload if anything else changed.
+#  • Any other push changes only what it touched the same way (an edit to the website uploads the website, an edit in android/ builds the APK, …).
+#  • "Run workflow" by hand: only imports an encrypted upload waiting in incoming/ (*.qmenc); with none it exits and builds / deploys nothing.
+#
+# Repository secrets: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD, FTP_DIR (folder of the site on the server, e.g. /htdocs/message/); optional FTP_PROTOCOL
+# (ftp | ftps | ftps-legacy, default ftp), FTP_PORT (default 21). Without them the builds still run (downloadable as artifacts) and the upload is skipped.
+# Optional signing secrets: ANDROID_KEYSTORE_B64, ANDROID_STORE_PASS, ANDROID_KEY_ALIAS, ANDROID_KEY_PASS.
+# Optional WORKFLOW_PAT (personal access token with "repo" + "workflow"): lets the import also update files in .github/workflows/.
+# secrets.php is never in the repo and never uploaded: keep the copy that is already on your server.
+on:
+  push:
+    branches: [main, master]
+    paths-ignore: ["README.md"]
+  workflow_dispatch:
+    inputs:
+      what:
+        description: "What to run"
+        type: choice
+        default: all
+        options: [all, import, site, android, ios]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: quickmessage
+  cancel-in-progress: false
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  # ------------------------------------------------------------------ what happened? (and unpack an uploaded zip)
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      site: ${{ steps.p.outputs.site == 'true' || steps.u.outputs.site == 'true' }}
+      android: ${{ steps.p.outputs.android == 'true' || steps.u.outputs.android == 'true' }}
+      ios: ${{ steps.p.outputs.ios == 'true' || steps.u.outputs.ios == 'true' }}
+    env:
+      HAS_PAT: ${{ secrets.WORKFLOW_PAT != '' }}
+      PUSH_TOKEN: ${{ secrets.WORKFLOW_PAT || github.token }}
+      QM_ZIP_KEY: ${{ secrets.QM_ZIP_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.WORKFLOW_PAT || github.token }}
+          fetch-depth: 0
+      - id: p
+        name: What changed?
+        env:
+          WHAT: ${{ inputs.what }}
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          zip=""; site=""; android=""; ios=""
+          shopt -s nullglob; zips=(incoming/*.zip incoming/*.qmenc)
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            # A manual run only ever imports an encrypted upload. With no .qmenc in incoming/ it stops here and builds / deploys nothing
+            # (a hand-started "everything" run could replace the live site or the app downloads with a different build).
+            shopt -s nullglob; enc=(incoming/*.qmenc)
+            if [ ${#enc[@]} -gt 0 ]; then zip=true; else echo "::notice::Manual run, but there is no encrypted upload (incoming/*.qmenc): nothing to do, nothing was built or deployed."; fi
+          elif [[ "$MSG" == Import\ quickmessage-* || "$MSG" == *"Imported from quickmessage-"* ]]; then
+            echo "This is the commit the import itself made: it was already built / uploaded in that run."
+          else
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then changed=$(git ls-files); else changed=$(git diff --name-only "$BEFORE" "$GITHUB_SHA" || git ls-files); fi
+            echo "$changed" | grep -qE '^incoming/.*\.(zip|qmenc)$' && [ ${#zips[@]} -gt 0 ] && zip=true
+            echo "$changed" | grep -q '^android/' && android=true
+            echo "$changed" | grep -q '^ios/' && ios=true
+            echo "$changed" | grep -qv -e '^android/' -e '^ios/' -e '^\.github/' -e '^README' -e '^incoming/' && site=true
+          fi
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"; echo "site=$site" >> "$GITHUB_OUTPUT"; echo "android=$android" >> "$GITHUB_OUTPUT"; echo "ios=$ios" >> "$GITHUB_OUTPUT"
+          echo "plan: zip=$zip site=$site android=$android ios=$ios"
+      - id: u
+        name: Unpack the newest zip and commit
+        if: steps.p.outputs.zip == 'true'
+        run: |
+          set -e
+          shopt -s nullglob
+          zips=(incoming/*.zip incoming/*.qmenc)
+          if [ ${#zips[@]} -eq 0 ]; then echo "No zip in incoming/ - nothing to do."; exit 0; fi
+          newest=$(printf '%s\n' "${zips[@]}" | sort -V | tail -n1)
+          # An encrypted upload (.qmenc, made with tools/encrypt-zip.sh): 512 bytes of RSA-encrypted AES key, then the AES-encrypted zip.
+          # Only the private key (repository secret QM_ZIP_KEY) opens it, so the upload commit that stays reachable on GitHub is useless to anyone else.
+          case "$newest" in
+            *.qmenc)
+              if [ -z "$QM_ZIP_KEY" ]; then echo "::error::incoming/$(basename "$newest") is encrypted but the repository secret QM_ZIP_KEY (the private key) is not set."; exit 1; fi
+              printf '%s\n' "$QM_ZIP_KEY" > "$RUNNER_TEMP/k.pem"; chmod 600 "$RUNNER_TEMP/k.pem"
+              head -c 512 "$newest" > "$RUNNER_TEMP/k.enc"
+              openssl pkeyutl -decrypt -inkey "$RUNNER_TEMP/k.pem" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in "$RUNNER_TEMP/k.enc" -out "$RUNNER_TEMP/k.txt" || { echo "::error::Couldn't decrypt: wrong or badly pasted QM_ZIP_KEY."; exit 1; }
+              plain="$RUNNER_TEMP/$(basename "${newest%.qmenc}").zip"
+              tail -c +513 "$newest" | openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass file:"$RUNNER_TEMP/k.txt" -out "$plain" || { echo "::error::Couldn't decrypt the file (damaged upload?)."; exit 1; }
+              rm -f "$RUNNER_TEMP/k.pem" "$RUNNER_TEMP/k.txt" "$RUNNER_TEMP/k.enc"
+              zipfile="$plain" ;;
+            *) echo "::warning::This zip was uploaded unencrypted, so it stays reachable on GitHub by its commit hash. Use tools/encrypt-zip.sh and upload the .qmenc file instead."; zipfile="$newest" ;;
+          esac
+          echo "Importing $newest"
+          rm -rf "$RUNNER_TEMP/unz" && mkdir "$RUNNER_TEMP/unz"
+          unzip -q "$zipfile" -d "$RUNNER_TEMP/unz"
+          src="$RUNNER_TEMP/unz"
+          # a zip made as one top-level folder: use what is inside it
+          if [ ! -e "$src/index.html" ] && [ "$(ls -1 "$src" | wc -l)" -eq 1 ] && [ -d "$src/$(ls -1 "$src")" ]; then src="$src/$(ls -1 "$src")"; fi
+          if [ ! -e "$src/index.html" ]; then echo "::error::The zip doesn't look like a QuickMessage project (no index.html)."; exit 1; fi
+          excludes=(--exclude=/.git/ --exclude=/incoming/ --exclude='*.zip' --exclude='*.qmenc' --exclude=/secrets.php)       # secrets.php holds the Firebase private key: it is never committed
+          if [ "$HAS_PAT" != "true" ]; then excludes+=(--exclude=/.github/); echo "::notice::No WORKFLOW_PAT secret: .github/ is left as it is."; fi
+          # The zip is the whole project, so files that are not in it any more are deleted too (excluded paths above are never touched).
+          rsync -a --delete "${excludes[@]}" "$src"/ ./
+          rm -f incoming/*.zip incoming/*.qmenc
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          committed=false
+          if git diff --cached --quiet; then echo "No changes in the project."; else
+            git diff --cached --name-only > "$RUNNER_TEMP/changed.txt"
+            # The commit is named after the version: the newest "## x.y.z — title" section of docs/CHANGELOG.md gives the subject and its first bullets the body.
+            python3 - "$(basename "${newest%.qmenc}")" > "$RUNNER_TEMP/msg.txt" <<'PY'
+          import re, sys
+          zipname = sys.argv[1]; subject = "Import " + zipname; body = []
+          try:
+              t = open("docs/CHANGELOG.md", encoding="utf-8").read()
+              m = re.search(r"^## (\d+\.\d+\.\d+)[ \t]*(?:[\u2014\u2013-]+[ \t]*(.*))?$", t, re.M)
+              if m:
+                  title = (m.group(2) or "").strip()
+                  subject = "v" + m.group(1) + (" \u2014 " + title if title else "")
+                  sec = t[m.end():]; n = re.search(r"^## ", sec, re.M); sec = sec[:n.start()] if n else sec
+                  for line in sec.splitlines():
+                      if line.startswith("- "): body.append(line.rstrip()[:300])
+                      if len(body) >= 12: break
+          except Exception:
+              pass
+          print(subject[:100]); print()
+          if body: print("\n".join(body)); print()
+          print("Imported from " + zipname)
+          print("[skip ci]")          # the push below must not start another run: this run already builds / uploads
+          PY
+            git commit -q -F "$RUNNER_TEMP/msg.txt"
+            committed=true
+          fi
+          # Zips never stay in the history, and neither does secrets.php (it holds the Firebase private key): every *.zip / *.qmenc / secrets.php that was ever committed (the upload itself, older imports) is removed from ALL commits,
+          # then the cleaned branch is force-pushed. The rewritten tip carries "[skip ci]" so this does not start another workflow.
+          url="https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if [ -n "$(git rev-list --all --max-count=1 -- '*.zip' '*.qmenc' secrets.php)" ]; then
+            echo "Removing zip files from the whole history..."
+            pip install --quiet git-filter-repo
+            git filter-repo --force --invert-paths --path-glob '*.zip' --path-glob '*.qmenc' --path secrets.php
+            if [ "$committed" != "true" ]; then
+              git commit -q --allow-empty -m "Remove uploaded zip from the history" -m "[skip ci]"
+            fi
+            git push --force "$url" "HEAD:refs/heads/${GITHUB_REF_NAME}" || { echo "::error::Couldn't force-push the cleaned history (is the branch protected? then allow force pushes for github-actions or the WORKFLOW_PAT owner)."; exit 1; }
+            if [ -n "$(git tag)" ]; then git push --force "$url" --tags || true; fi
+          elif [ "$committed" = "true" ]; then
+            git push "$url" "HEAD:refs/heads/${GITHUB_REF_NAME}"
+          else
+            exit 0
+          fi
+          grep -q '^android/' "$RUNNER_TEMP/changed.txt" && echo "android=true" >> "$GITHUB_OUTPUT" || true
+          grep -q '^ios/' "$RUNNER_TEMP/changed.txt" && echo "ios=true" >> "$GITHUB_OUTPUT" || true
+          grep -qv -e '^android/' -e '^ios/' -e '^\.github/' -e '^README' "$RUNNER_TEMP/changed.txt" && echo "site=true" >> "$GITHUB_OUTPUT" || true
+
+  # ------------------------------------------------------------------ website -> FTP (runs while the apps build)
+  site:
+    needs: prepare
+    if: needs.prepare.outputs.site == 'true'
+    runs-on: ubuntu-latest
+    env:
+      HAS_FTP: ${{ secrets.FTP_SERVER != '' && secrets.FTP_USERNAME != '' && secrets.FTP_PASSWORD != '' }}
+      FTP_DIR_RAW: ${{ secrets.FTP_DIR }}
+    steps:
+      - name: No FTP secrets
+        if: env.HAS_FTP != 'true'
+        run: echo "::notice::FTP_SERVER / FTP_USERNAME / FTP_PASSWORD are not set, so nothing is uploaded."
+      - uses: actions/checkout@v4
+        if: env.HAS_FTP == 'true'
+        with: { ref: "${{ github.ref_name }}" }
+      - name: Server folder
+        if: env.HAS_FTP == 'true'
+        id: d
+        run: d="${FTP_DIR_RAW:-./}"; case "$d" in */) ;; *) d="$d/";; esac; echo "dir=$d" >> "$GITHUB_OUTPUT"
+      - name: Upload the website
+        id: up1
+        if: env.HAS_FTP == 'true'
+        continue-on-error: true       # free hosts drop FTP data connections now and then: one more try below
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ${{ secrets.FTP_PROTOCOL || 'ftp' }}
+          port: ${{ secrets.FTP_PORT || '21' }}
+          server-dir: ${{ steps.d.outputs.dir }}
+          local-dir: ./
+          exclude: |
+            **/.git*
+            **/.git*/**
+            .github/**
+            android/**
+            ios/**
+            incoming/**
+            tools/**
+            **/*.zip
+            **/*.qmenc
+            README.md
+            docs/**
+            server/**
+            functions/**
+            firebase.json
+            .firebaserc
+            database.rules.json
+            secrets.php
+      - name: Upload the website (second try, only the files still missing)
+        if: env.HAS_FTP == 'true' && steps.up1.outcome == 'failure'
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ${{ secrets.FTP_PROTOCOL || 'ftp' }}
+          port: ${{ secrets.FTP_PORT || '21' }}
+          server-dir: ${{ steps.d.outputs.dir }}
+          local-dir: ./
+          exclude: |
+            **/.git*
+            **/.git*/**
+            .github/**
+            android/**
+            ios/**
+            incoming/**
+            tools/**
+            **/*.zip
+            **/*.qmenc
+            README.md
+            docs/**
+            server/**
+            functions/**
+            firebase.json
+            .firebaserc
+            database.rules.json
+            secrets.php
+
+  # ------------------------------------------------------------------ Android APK
+  android:
+    needs: prepare
+    if: needs.prepare.outputs.android == 'true'
+    runs-on: ubuntu-latest
+    env:
+      HAS_KS: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ github.ref_name }}" }
+      - name: "Version number (1000 + run number, so it is above the old builds)"
+        run: echo "QM_BUILD=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: 8.14.3 }
+      - name: Use your own signing key (optional secrets)
+        if: env.HAS_KS == 'true'
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/qm.jks"
+          echo "QM_KEYSTORE=$RUNNER_TEMP/qm.jks" >> "$GITHUB_ENV"
+          echo "QM_STORE_PASS=${{ secrets.ANDROID_STORE_PASS }}" >> "$GITHUB_ENV"
+          echo "QM_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> "$GITHUB_ENV"
+          echo "QM_KEY_PASS=${{ secrets.ANDROID_KEY_PASS }}" >> "$GITHUB_ENV"
+      - name: Push notifications (optional secret GOOGLE_SERVICES_JSON)
+        env:
+          GS_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          # The file from Firebase console > Project settings > Your apps > Android (package app.quickmessage.chat). Paste the JSON, or its base64.
+          # Without it the app still builds and works, but keeps a live connection for notifications instead of using push.
+          if [ -n "$GS_JSON" ]; then
+            if echo "$GS_JSON" | head -c1 | grep -q '{'; then printf '%s' "$GS_JSON" > android/app/google-services.json; else echo "$GS_JSON" | base64 -d > android/app/google-services.json; fi
+            python3 -c "import json;d=json.load(open('android/app/google-services.json'));print('google-services.json ok for', d['project_info']['project_id'])"
+          else echo "No GOOGLE_SERVICES_JSON secret: building without push (live connection is used)."; fi
+      # The runner image already ships the Android SDK (ANDROID_HOME) and accepts its licences; the gradle cache from setup-gradle speeds up later builds.
+      - name: Build debug APK
+        working-directory: android
+        run: set -o pipefail; gradle assembleDebug --no-daemon --build-cache --stacktrace 2>&1 | tee build.log
+      - name: Show compile errors in the job summary
+        if: failure()
+        run: |
+          { echo '### Build errors'; echo '```'; grep -E '^e: |error:|FAILED|What went wrong' -A3 android/build.log | head -80; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quickmessage-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          compression-level: 0
+      - name: Upload the build log (only when it failed)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-log
+          path: android/build.log
+
+  # ------------------------------------------------------------------ iOS: unsigned .ipa + TrollStore .tipa
+  ios:
+    needs: prepare
+    if: needs.prepare.outputs.ios == 'true'
+    runs-on: macos-latest
+    env:
+      NAME: 1.0.${{ github.run_number }}
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
+      HOMEBREW_NO_ENV_HINTS: 1
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ github.ref_name }}" }
+      - name: Tools and version number
+        run: |
+          echo "BUILD=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_ENV"
+          brew install xcodegen ldid
+      - name: Generate the Xcode project and build (unsigned)
+        working-directory: ios
+        run: |
+          xcodegen generate
+          xcodebuild -project QuickMessage.xcodeproj -scheme QuickMessage \
+            -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION=$BUILD MARKETING_VERSION=$NAME \
+            build | tail -n 40
+      - name: Package the .ipa and the .tipa (TrollStore)
+        working-directory: ios
+        run: |
+          app_src=build/Build/Products/Release-iphoneos/QuickMessage.app
+          rm -rf Payload && mkdir Payload && cp -R "$app_src" Payload/
+          zip -qr QuickMessage-unsigned.ipa Payload
+          # TrollStore: a .tipa is an .ipa whose binaries carry a fake signature (ldid) - TrollStore replaces it with its own permanent one.
+          rm -rf tipa && mkdir -p tipa/Payload && cp -R "$app_src" tipa/Payload/
+          app=tipa/Payload/QuickMessage.app
+          for b in "$app"/PlugIns/*.appex; do [ -d "$b" ] && ldid -S "$b/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$b/Info.plist")"; done
+          ldid -S "$app/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")"
+          (cd tipa && zip -qry ../QuickMessage.tipa Payload)
+          ls -la QuickMessage-unsigned.ipa QuickMessage.tipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quickmessage-ios
+          path: |
+            ios/QuickMessage-unsigned.ipa
+            ios/QuickMessage.tipa
+          compression-level: 0
+
+  # ------------------------------------------------------------------ iOS Simulator build (its own
