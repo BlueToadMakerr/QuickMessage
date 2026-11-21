@@ -3,7 +3,7 @@
 Talks to the database only through a `Backend` object:
     get(path) -> value or None          update({path: value|None, ...})          new_key() -> str
     messages(chat, after, limit) -> {key: message}   (oldest first when sorted by key)
-Routes (header "Authorization: Bearer <token>"): GET /me, PATCH /me, GET /chats, GET /members, GET /messages, POST /send, PATCH|DELETE /message.
+Routes (header "Authorization: Bearer <token>"): GET /me, PATCH /me, GET /chats, GET /members, GET /messages, POST /send, PATCH|DELETE /message, POST /leave, POST /createChat, POST /addUser, POST /kick.
 """
 import hashlib, hmac, ipaddress, json, re, socket, ssl, threading, time, http.client
 from urllib.parse import urlparse
@@ -40,6 +40,9 @@ def auth_bot(db, tok):
     bot = db.get(f"bots/{m.group(1)}")
     if not isinstance(bot, dict): bad("This bot was deleted.", 401)
     return m.group(1), bot
+
+
+W_HITS = {}
 
 
 def in_chat(db, bid, chat):
@@ -183,6 +186,64 @@ def handle(db, method, route, q, b, tok, stats=None):
             up[f"accsettings/{bid}/settings/pfp"] = u or None; up[f"bots/{bid}/pfp"] = u or None
         if not up: bad("Send name and/or pfp.")
         db.update(up); return {"ok": True}
+    # ---- chats the bot manages itself. The riskier ones need the owner's switch (botPerms/{id}: createChats, addUsers, kickUsers).
+    if route in ("POST /createChat", "POST /addUser", "POST /kick", "POST /leave"):
+        def perm(name):
+            if db.get("botPerms/%s/%s" % (bid, name)) is not True: bad('This bot\'s owner has not allowed "%s". They can switch it on in Account → Bots (the gear next to the bot\'s name).' % name, 403)
+        def writes():
+            t = time.time(); a = [x for x in W_HITS.get(bid, []) if t - x < 60] + [t]; W_HITS[bid] = a
+            if len(a) > 30: bad("Slow down: at most 30 chat changes per minute.", 429)
+        def not_enc(chat):
+            if db.get("privateChats/%s/chatData/encrypted" % chat) is True: bad("Not allowed in end-to-end encrypted chats (the bot has no key).", 403)
+        def find_user(who):
+            who = str(who or "").strip(); s = re.sub(r"[^A-Z0-9]", "", who.upper())
+            if s.startswith("QM"): s = s[2:]
+            u = None
+            if len(s) == 10 and re.match(r"^[BCDFGHJKMNPQRSTVWXZ2-9]{10}$", s): u = db.get("friendCodes/QM-%s-%s" % (s[:5], s[5:]))
+            elif who and not BOT_RE.match(who) and re.match(r"^[\w-]{6,64}$", who):
+                for c in list(db.get("chatList/%s" % bid) or {})[:100]:
+                    if db.get("privateChats/%s/participants/%s" % (c, who)) is True: u = who; break
+            if not isinstance(u, str) or not u or BOT_RE.match(u) or not db.get("accsettings/%s/settings" % u): bad("No one can be added with that. Use their friend code (QM-…) or the uid of someone already in a chat with the bot.", 404)
+            return u
+        now = int(time.time() * 1000)
+        if route == "POST /createChat":
+            perm("createChats"); writes()
+            raw = b.get("users") if isinstance(b.get("users"), list) else []
+            raw = raw[:20]
+            if raw: perm("addUsers")
+            members = [bid]
+            for w in raw:
+                u = find_user(w)
+                if u not in members: members.append(u)
+            chat = db.new_key(); name = clean(b.get("name"), 100)
+            c = {"participants": {m: True for m in members}, "lastMessage": {"fromUid": "", "text": "(No messages yet)", "timestamp": now}}
+            if name: c["chatData"] = {"name": name}
+            up = {"privateChats/%s" % chat: c}
+            for m in members: up["chatList/%s/%s" % (m, chat)] = True
+            db.update(up); return {"chat": chat}
+        in_chat(db, bid, b.get("chat")); chat = b["chat"]
+        if route == "POST /addUser":
+            perm("addUsers"); not_enc(chat); writes()
+            u = find_user(b.get("user"))
+            if db.get("privateChats/%s/participants/%s" % (chat, u)) is True: bad("They are already in this chat.", 409)
+            db.update({"privateChats/%s/participants/%s" % (chat, u): True, "chatList/%s/%s" % (u, chat): True,
+                    "privateChats/%s/messages/%s" % (chat, db.new_key()): {"fromUid": bid, "botId": bid, "type": "event", "event": "chat_add", "target": u, "text": "chat_add", "timestamp": now}})
+            return {"ok": True, "uid": u}
+        if route == "POST /kick":
+            perm("kickUsers"); not_enc(chat); writes()
+            u = str(b.get("user") or "")
+            if u == bid: bad("Use leave to remove the bot itself.")
+            if u == bot.get("owner"): bad("A bot can't remove its own owner.", 403)
+            if db.get("privateChats/%s/participants/%s" % (chat, u)) is not True: bad("They are not in this chat.", 404)
+            db.update({"privateChats/%s/participants/%s" % (chat, u): None, "privateChats/%s/messageRead/%s" % (chat, u): None, "privateChats/%s/typing/%s" % (chat, u): None, "chatList/%s/%s" % (u, chat): None,
+                    "privateChats/%s/messages/%s" % (chat, db.new_key()): {"fromUid": bid, "botId": bid, "type": "event", "event": "chat_kick", "target": u, "text": "chat_kick", "timestamp": now}})
+            return {"ok": True}
+        others = [u for u in (db.get("privateChats/%s/participants" % chat) or {}) if u != bid]
+        if not others:
+            db.update({"privateChats/%s" % chat: None, "chatList/%s/%s" % (bid, chat): None}); return {"ok": True, "deleted": True}
+        db.update({"privateChats/%s/participants/%s" % (chat, bid): None, "chatList/%s/%s" % (bid, chat): None,
+                "privateChats/%s/messages/%s" % (chat, db.new_key()): {"fromUid": bid, "botId": bid, "type": "event", "event": "chat_leave", "text": "chat_leave", "timestamp": now}})
+        return {"ok": True}
     if route == "GET /chats":
         out = []
         for chat in list(db.get(f"chatList/{bid}") or {})[:200]:
@@ -260,7 +321,7 @@ def handle(db, method, route, q, b, tok, stats=None):
 
 # ---------------------------------------------------------------- requests through the database (botInbox -> botOutbox)
 OPS = {"me": ("GET", "/me"), "setProfile": ("PATCH", "/me"), "chats": ("GET", "/chats"), "members": ("GET", "/members"), "messages": ("GET", "/messages"),
-       "send": ("POST", "/send"), "edit": ("PATCH", "/message"), "delete": ("DELETE", "/message"),
+       "send": ("POST", "/send"), "edit": ("PATCH", "/message"), "delete": ("DELETE", "/message"), "leave": ("POST", "/leave"), "createChat": ("POST", "/createChat"), "addUser": ("POST", "/addUser"), "kick": ("POST", "/kick"),
        "callJoin": ("POST", "/callJoin"), "callLeave": ("POST", "/callLeave"), "callSessions": ("GET", "/callSessions"), "callSignals": ("GET", "/callSignals"),
        "callSignal": ("POST", "/callSignal"), "callState": ("PATCH", "/callState")}
 

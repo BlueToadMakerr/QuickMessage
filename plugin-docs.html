@@ -308,6 +308,12 @@ qm.on('chat-open', () =&gt; qm.toast('You opened a chat'));
 <td>1.48.0</td>
 </tr>
 <tr>
+<td><code>addMembers</code></td>
+<td>high</td>
+<td><code>qm.chat.addUser(friendCodeOrEmail)</code>, <code>qm.chat.addBot(botIdOrCode)</code>, <code>qm.chat.myBots()</code>: ask to add a person or a bot to the open chat. You are asked to confirm every add, naming the plugin</td>
+<td>1.88.0</td>
+</tr>
+<tr>
 <td><code>editOwn</code></td>
 <td>high</td>
 <td><code>qm.messages.edit(key, text)</code> on your own messages</td>
@@ -595,7 +601,7 @@ qm.on('chat-open', () =&gt; qm.toast('You opened a chat'));
 </tr>
 </tbody>
 </table></div>
-<h3 id="chat-needs-chat-sending-needs-send">Chat (needs <code>chat</code>; sending needs <code>send</code>)</h3>
+<h3 id="chat-needs-chat-sending-needs-send-adding-people-needs-addmembers">Chat (needs <code>chat</code>; sending needs <code>send</code>; adding people needs <code>addMembers</code>)</h3>
 <div class="doc-table"><table>
 <thead>
 <tr>
@@ -647,6 +653,24 @@ qm.on('chat-open', () =&gt; qm.toast('You opened a chat'));
 <td><code>send</code></td>
 <td>1.48.0</td>
 <td>Sends like pressing Send (mentions and replies work). 5 per 10 seconds. Returns a boolean.</td>
+</tr>
+<tr>
+<td><code>qm.chat.addUser(who)</code></td>
+<td><code>addMembers</code></td>
+<td>1.88.0</td>
+<td><code>who</code> is a friend code (<code>QM-…</code>) or an email. Shows you a confirmation naming the plugin; resolves <code>true</code> if you accepted and they were added, <code>false</code> if you declined; rejects if they are already in, don't exist, or your email isn't verified.</td>
+</tr>
+<tr>
+<td><code>qm.chat.addBot(what)</code></td>
+<td><code>addMembers</code></td>
+<td>1.88.0</td>
+<td><code>what</code> is one of <strong>your</strong> bot ids (<code>bot_…</code>) or a bot's add code (<code>bot_….SECRET</code>, see the bot docs). Confirmation first; <code>true</code> / <code>false</code> as above. A code only works while the bot's owner has it on.</td>
+</tr>
+<tr>
+<td><code>qm.chat.myBots()</code></td>
+<td><code>addMembers</code></td>
+<td>1.88.0</td>
+<td><code>[{id, name, inChat}]</code>: only the bots you own.</td>
 </tr>
 <tr>
 <td><code>qm.chats.unread()</code></td>
@@ -1353,6 +1377,10 @@ qm.toast(j.setup + ' ' + j.punchline);
 <tr>
 <td>1.87.2</td>
 <td><code>theme</code>, <code>nav</code>, <code>people</code>, <code>watchChatList</code>, <code>markRead</code>; <code>qm.theme</code>, <code>qm.nav</code>, <code>qm.people</code>, <code>qm.chats.markRead / markAllRead</code>; events <code>chat-added</code>, <code>chat-removed</code>.</td>
+</tr>
+<tr>
+<td>1.88.0</td>
+<td><code>addMembers</code>; <code>qm.chat.addUser</code>, <code>qm.chat.addBot</code>, <code>qm.chat.myBots</code>.</td>
 </tr>
 </tbody>
 </table></div>

@@ -13,7 +13,7 @@
 <div class="shell">
   <header class="topbar"><a href="bots.html" class="icon-btn" aria-label="Back to bots" data-icon="back"></a><h1 class="brand">Bot docs</h1></header>
   <main class="doc-page">
-<nav class="doc-toc card"><strong>Contents</strong><ol><li><a href="#quick-start">Quick start</a></li><li><a href="#the-database-protocol">The database protocol</a></li><li><a href="#requests">Requests</a></li><li><a href="#calls">Calls</a></li><li><a href="#who-posted-what">Who posted what</a></li><li><a href="#webhook-optional">Webhook (optional)</a></li><li><a href="#limits">Limits</a></li><li><a href="#safety">Safety</a></li><li><a href="#ready-made-bots">Ready-made bots</a></li></ol></nav>
+<nav class="doc-toc card"><strong>Contents</strong><ol><li><a href="#quick-start">Quick start</a></li><li><a href="#the-database-protocol">The database protocol</a></li><li><a href="#requests">Requests</a></li><li><a href="#what-the-owner-lets-a-bot-do-the-gear">What the owner lets a bot do (the gear)</a></li><li><a href="#letting-other-people-add-your-bot-add-code">Letting other people add your bot (add code)</a></li><li><a href="#calls">Calls</a></li><li><a href="#who-posted-what">Who posted what</a></li><li><a href="#webhook-optional">Webhook (optional)</a></li><li><a href="#limits">Limits</a></li><li><a href="#safety">Safety</a></li><li><a href="#ready-made-bots">Ready-made bots</a></li></ol></nav>
 <h2 id="quick-start">Quick start</h2>
 <p>A bot is an account a program controls. Make one in <strong>Account → Bots</strong>, copy its token (shown once), then open a chat → chat menu → Settings → Members → <strong>Add one of my bots…</strong>.</p>
 <p>Bots talk to your <strong>worker</strong> (<code>worker/qm_worker.py</code>, no Blaze plan needed) <strong>through the database</strong>, so there is nothing to expose and nothing on the web host: a bot writes a request into the database, the worker processes it and writes the answer. Bots only work while the worker runs: <code>status.html</code> and the Account / Bots pages show whether it is up. (On the private server the same operations are plain HTTP at <code>/api/bot/...</code>; the worker can also serve that with <code>--http-api</code>.)</p>
@@ -63,6 +63,22 @@
 <td>Edit or delete the bot's own messages</td>
 </tr>
 <tr>
+<td><code>POST /leave {chat}</code> = <code>leave</code></td>
+<td>The bot leaves the chat: it is removed from the members and the chat list, and a "left the chat" line is shown. Someone has to add it again to bring it back. If nobody else is in the chat it is deleted</td>
+</tr>
+<tr>
+<td><code>POST /createChat {name?, users?}</code> = <code>createChat</code></td>
+<td>The bot makes a new chat it is in; answer <code>{chat}</code>. <code>users</code> (up to 20) puts people in it from the start. <strong>Needs the owner's <code>createChats</code> switch</strong> (and <code>addUsers</code> when <code>users</code> is used)</td>
+</tr>
+<tr>
+<td><code>POST /addUser {chat, user}</code> = <code>addUser</code></td>
+<td>Adds a person to a chat the bot is in. <code>user</code> is a friend code (<code>QM-…</code>; works only while its owner has it on) or the uid of someone already in a chat with the bot. A line "bot added X" is shown. <strong>Needs <code>addUsers</code>.</strong> Not allowed in end-to-end encrypted chats</td>
+</tr>
+<tr>
+<td><code>POST /kick {chat, user}</code> = <code>kick</code></td>
+<td>Removes a person (uid from <code>members</code>) from a chat the bot is in, with a "removed" line. It can't remove its own owner or itself (use <code>leave</code>). <strong>Needs <code>kickUsers</code>.</strong> Not allowed in end-to-end encrypted chats</td>
+</tr>
+<tr>
 <td><code>POST /callJoin {chat, audio, video}</code> = <code>callJoin</code></td>
 <td>The bot joins the chat's call as one more participant: answer <code>{sid, sessions}</code> (<code>sid</code> = the bot's session). Not allowed in end-to-end encrypted chats</td>
 </tr>
@@ -88,6 +104,15 @@
 </tr>
 </tbody>
 </table></div>
+<h2 id="what-the-owner-lets-a-bot-do-the-gear">What the owner lets a bot do (the gear)</h2>
+<p>Next to each bot's name in Account → Bots there is a gear (⚙). It has three switches, <strong>all off until the owner turns them on</strong>: <em>Start its own chats</em> (<code>createChats</code>), <em>Add people to chats</em> (<code>addUsers</code>) and <em>Remove people from chats</em> (<code>kickUsers</code>). Without the switch the request answers <code>403</code>. Posting, reading, editing its own messages and leaving a chat are always allowed. A bot is limited to 30 chat changes (create / add / remove) per minute.</p>
+<h2 id="letting-other-people-add-your-bot-add-code">Letting other people add your bot (add code)</h2>
+<p>In Account → Bots, press <strong>Add code</strong> on a bot. Turn it on and QuickMessage shows a code like <code>bot_abc123def456.K7M2Q9XT3A</code> (the bot id, a dot, and a secret). Anyone who has the code can paste it in the same box they use to add a person (chat options → Members → <em>Add someone by friend code, email or bot code</em>) and the bot joins that chat. In <strong>Start a new chat</strong> the code starts a chat with just that person and the bot. You can:</p>
+<ul>
+<li><strong>Turn it off</strong> at any time: the code stops working at once (bots already in chats stay there).</li>
+<li><strong>Get a new random code</strong> or <strong>use your own</strong> (6 to 40 letters, numbers, <code>-</code> or <code>_</code>): the old code stops working at once.</li>
+</ul>
+<p>Only the bot's owner can read or change the code. With the code off, only you can add the bot (through <em>Add one of my bots…</em>, which lists just the bots you own). A code never lets anyone read the bot's token. A bot can also remove itself with <code>leave</code>.</p>
 <h2 id="calls">Calls</h2>
 <p>A bot can be called like a person (its ring arrives in the event feed as <code>{event:"call", bot, chat, from, fromName, ringId}</code>) or can join a call that is already running. The routes above do the call bookkeeping; the voice and video are normal WebRTC handled by the bot's own program. <code>docs/bots/qmcall.py</code> is a ready-made one (aiortc: plays an audio / video file into the call, records what people say, and is the place to plug in a voice assistant or music bot). The worker keeps the bot's session alive while it keeps calling the routes (any call route renews a 90 second lease; poll <code>callSignals</code> about every second) and removes it when the bot goes quiet. Signalling follows <code>js/call/mesh.js</code> ("perfect negotiation": the session with the higher id yields when both offer at once, <code>epoch</code> restarts a connection). The bot calls are served by the worker only (not by the Firebase Functions version).</p>
 <h2 id="who-posted-what">Who posted what</h2>

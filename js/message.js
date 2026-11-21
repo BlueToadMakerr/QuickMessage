@@ -35,7 +35,7 @@ import { attachTriggers } from "./triggers.js";
 import { link as qmLink, PAGES as QM_PAGES, TABS as QM_TABS, convertOwn } from "./qmlinks.js";
 import { resolveRecipient } from "./recipient.js";
 import { ensureFriend, publicCodeOf } from "./friend.js";
-import { isBotUid, listBots, addBotToChat } from "./bots.js";
+import { isBotUid, listBots, addBotToChat, addBotByCode, parseBotCode } from "./bots.js";
 import { requireVerified, isVerified, watchVerified } from "./verify.js";
 
 hydrateIcons();
@@ -2096,6 +2096,21 @@ async function removeParticipant(uid) {
 $("addUserBtn").onclick = async () => {
   const input = $("addUserUid");
   if (!requireVerified("add people")) return;
+  const pc = parseBotCode(input.value);
+  if (pc) {                                                    // a bot code goes in the same box as a friend code or an email
+    if (participants.includes(pc.id)) return toast("That bot is already in this chat.", "error");
+    try {
+      const bp = await getProfile(pc.id).catch(() => null);
+      const node = document.createElement("div"); node.className = "stack";
+      const row = document.createElement("div"); row.className = "profile-preview";
+      const lab = document.createElement("div"); lab.className = "name"; lab.textContent = (bp && bp.displayName) || pc.id;
+      row.append(avatarEl(lab.textContent, (bp && bp.pfp) || "", "avatar"), lab); node.append(row);
+      if (chatEncrypted) { const w = document.createElement("p"); w.className = "plugin-issue warn"; w.textContent = "This chat is end-to-end encrypted. A bot can't read encrypted messages, and what it posts here is not encrypted (it is stored readable)."; node.append(w); }
+      if (!await confirmDialog({ title: "Add this bot to the chat?", node, message: "The bot can read the plain messages in this chat and post here. Only add bots you trust.", okText: "Add bot" })) return;
+      await addBotWithCode(input.value); input.value = ""; toast("Bot added.", "success");
+    } catch (err) { toast(err.message || "Couldn't add that bot.", "error", 4500); }
+    return;
+  }
   let newUid;
   try { newUid = await resolveRecipient(input.value); } catch (e) { return toast(e.message, "error"); }
   if (participants.includes(newUid)) return toast("They're already in this chat.", "error");
@@ -2143,6 +2158,46 @@ $("addBotBtn").onclick = async () => {
     logEvent(chatId, me, { event: "chat_add", target: chosen });
     toast("Bot added.", "success");
   } catch (err) { console.error(err); toast("Couldn't add that bot.", "error"); }
+};
+
+/** Add a bot by the code its owner shared. Used by the Members box and by plugins with the addMembers permission. */
+async function addBotWithCode(code) {
+  if (!requireVerified("add a bot")) throw new Error("Verify your email first.");
+  const id = await addBotByCode(chatPath, chatId, code);
+  logEvent(chatId, me, { event: "chat_add", target: id });
+  return id;
+}
+window.__qmAddBotByCode = addBotWithCode;
+
+/** For plugins with the addMembers permission. Every add asks you first (a plugin never adds anyone silently). */
+async function pluginAsk(by, what) {
+  return confirmDialog({ title: "Let a plugin add to this chat?", message: `The plugin “${by}” wants to ${what}.`, okText: "Add", danger: false });
+}
+window.__qmMyBots = async () => (await listBots(me)).map(b => ({ id: b.id, name: b.name, inChat: participants.includes(b.id) }));
+window.__qmAddUser = async (who, by) => {
+  if (!requireVerified("add people")) throw new Error("Verify your email first.");
+  const uid = await resolveRecipient(String(who || ""));
+  if (participants.includes(uid)) throw new Error("They're already in this chat.");
+  if (!(await profileExists(uid))) throw new Error("No user found.");
+  const p = await getProfile(uid);
+  if (!await pluginAsk(by, `add ${p.displayName} to this chat`)) return false;
+  await update(ref(db, `${chatPath}/participants`), { [uid]: true });
+  await set(ref(db, `chatList/${uid}/${chatId}`), true);
+  logEvent(chatId, me, { event: "chat_add", target: uid });
+  if (chatEncrypted) E2E.ensureMemberKeys(chatId, [...participants, uid]).catch(() => {});
+  return true;
+};
+/** what: one of YOUR bots (its id, bot_…) or a bot code (bot_….SECRET). */
+window.__qmAddBot = async (what, by) => {
+  if (!requireVerified("add a bot")) throw new Error("Verify your email first.");
+  const t = String(what || "").trim(), id = (/^(bot_[a-z0-9]{12})/.exec(t) || [])[1];
+  if (!id) throw new Error("Give one of your bot ids or a bot code.");
+  if (participants.includes(id)) throw new Error("That bot is already in this chat.");
+  const name = (await getProfile(id).catch(() => null))?.displayName || id;
+  if (!await pluginAsk(by, `add the bot “${name}” to this chat`)) return false;
+  if (t.length > id.length) await addBotWithCode(t);
+  else { await addBotToChat(chatPath, chatId, id); logEvent(chatId, me, { event: "chat_add", target: id }); }
+  return true;
 };
 
 // ---------- encryption setup ----------

@@ -51,7 +51,7 @@
           ".write": "$botId.matches(/^bot_[a-z0-9]{12}$/) && $reqId.matches(/^[A-Za-z0-9_-]{20,64}$/) && !data.exists() && newData.exists() && newData.child('token').isString() && newData.child('token').val() === root.child('botKeys').child($botId).child('token').val()",
           ".validate": "newData.hasChildren(['token', 'op', 'ts'])",
           "token":   { ".validate": "newData.isString() && newData.val().length <= 100" },
-          "op":      { ".validate": "newData.isString() && newData.val().matches(/^(me|setProfile|chats|members|messages|send|edit|delete)$/)" },
+          "op":      { ".validate": "newData.isString() && newData.val().matches(/^(me|setProfile|chats|members|messages|send|edit|delete|leave|createChat|addUser|kick|callJoin|callLeave|callSessions|callSignals|callSignal|callState)$/)" },
           "ts":      { ".validate": "newData.isNumber()" },
           "chat":    { ".validate": "newData.isString() && newData.val().length <= 64" },
           "id":      { ".validate": "newData.isString() && newData.val().length <= 40" },
@@ -90,6 +90,37 @@
         ".read": "$uid === auth.uid",
         ".write": "$uid === auth.uid",
         "$botId": { ".validate": "newData.val() === true" }
+      }
+    },
+    // botJoin/{botId}: {on, code}. The owner's "let others add this bot with a code" switch and the code itself (only the owner can read or change it).
+    // botJoinUse/{chatId}/{botId}: the code someone types in a chat's Members section. It only exists for the instant of the write that adds the bot
+    // (the participants rule below compares it with botJoin), then the app deletes it. Nobody can read it.
+    "botJoin": {
+      "$botId": {
+        ".read": "auth != null && root.child('bots').child($botId).child('owner').val() === auth.uid",
+        ".write": "auth != null && root.child('bots').child($botId).child('owner').val() === auth.uid",
+        "on":   { ".validate": "newData.isBoolean()" },
+        "code": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{6,40}$/)" },
+        "$other": { ".validate": false }
+      }
+    },
+    "botJoinUse": {
+      "$chatId": {
+        "$botId": {
+          ".write": "auth != null && $botId.matches(/^bot_[a-z0-9]{12}$/) && (root.child('privateChats').child($chatId).child('participants').child(auth.uid).exists() || newData.parent().parent().parent().child('privateChats').child($chatId).child('participants').child(auth.uid).exists())",
+          ".validate": "newData.isString() && newData.val().length <= 40"
+        }
+      }
+    },
+    // botPerms/{botId}: the riskier things the owner lets this bot do through the bot API (all off until switched on): createChats, addUsers, kickUsers.
+    "botPerms": {
+      "$botId": {
+        ".read": "auth != null && root.child('bots').child($botId).child('owner').val() === auth.uid",
+        ".write": "auth != null && root.child('bots').child($botId).child('owner').val() === auth.uid",
+        "createChats": { ".validate": "newData.isBoolean()" },
+        "addUsers":    { ".validate": "newData.isBoolean()" },
+        "kickUsers":   { ".validate": "newData.isBoolean()" },
+        "$other":      { ".validate": false }
       }
     },
     "botKeys": {
@@ -182,8 +213,8 @@
         "participants": {
           // Members can add/remove members (add user, remove user, leave chat). Unverified accounts may only leave.
           ".write": "auth != null && root.child('privateChats').child($chatId).child('participants').child(auth.uid).exists() && (auth.token.email_verified === true || !newData.child(auth.uid).exists())",
-          // A bot (bot_xxx) can only be added by its owner; anyone in the chat can remove it
-          "$uid": { ".validate": "newData.val() === true && (!$uid.beginsWith('bot_') || data.exists() || root.child('bots').child($uid).child('owner').val() === auth.uid)" }
+          // A bot (bot_xxx) can only be added by its owner, or by anyone who brings its current add code while the owner has that switched on; anyone in the chat can remove it
+          "$uid": { ".validate": "newData.val() === true && (!$uid.beginsWith('bot_') || data.exists() || root.child('bots').child($uid).child('owner').val() === auth.uid || (root.child('botJoin').child($uid).child('on').val() === true && newData.parent().parent().parent().parent().child('botJoinUse').child($chatId).child($uid).val() === root.child('botJoin').child($uid).child('code').val()))" }
         },
 
         "chatData": {

@@ -98,6 +98,7 @@ Risk is what the review shows. **Since** is the site version that added it.
 | `menu` | medium | `qm.messageMenu.*`: extra choices in the message menu | 1.49.0 |
 | `triggers` | low | `qm.triggers.*` and event `trigger-pick`: pop-up lists for special characters in the message box | 1.82.0 |
 | `send` | high | `qm.chat.send()`, `qm.messages.reply()`: sends in the open chat as you (5 per 10 seconds; a small notice says the plugin sent it) | 1.48.0 |
+| `addMembers` | high | `qm.chat.addUser(friendCodeOrEmail)`, `qm.chat.addBot(botIdOrCode)`, `qm.chat.myBots()`: ask to add a person or a bot to the open chat. You are asked to confirm every add, naming the plugin | 1.88.0 |
 | `editOwn` | high | `qm.messages.edit(key, text)` on your own messages | 1.82.0 |
 | `deleteOwn` | high | `qm.messages.delete(key)` on your own messages (you confirm each time) | 1.82.0 |
 | `markRead` | medium | `qm.chats.markRead(chatId)`, `qm.chats.markAllRead()`: mark chats as read (the other people see you read them) | 1.87.2 |
@@ -166,7 +167,7 @@ Every method that talks to the site returns a Promise. **Needs** names the permi
 | `qm.settings.set(id, value)` | 1.84.0 | Change one value from code. It is checked against the field (range, options, length). |
 | event `settings-change` | 1.84.0 | `{values}` after the person saves the form. |
 
-### Chat (needs `chat`; sending needs `send`)
+### Chat (needs `chat`; sending needs `send`; adding people needs `addMembers`)
 
 | Call | Needs | Since | Details |
 |---|---|---|---|
@@ -177,6 +178,9 @@ Every method that talks to the site returns a Promise. **Needs** names the permi
 | `qm.chat.list()` | `chat` | 1.48.0 | `[{id, title, unread}]` (plus `preview` if you also have `messages`). |
 | `qm.chat.info()` | `chat` | 1.48.0 | `{chatId, title}` of the open chat. |
 | `qm.chat.send(text, {replyTo?})` | `send` | 1.48.0 | Sends like pressing Send (mentions and replies work). 5 per 10 seconds. Returns a boolean. |
+| `qm.chat.addUser(who)` | `addMembers` | 1.88.0 | `who` is a friend code (`QM-…`) or an email. Shows you a confirmation naming the plugin; resolves `true` if you accepted and they were added, `false` if you declined; rejects if they are already in, don't exist, or your email isn't verified. |
+| `qm.chat.addBot(what)` | `addMembers` | 1.88.0 | `what` is one of **your** bot ids (`bot_…`) or a bot's add code (`bot_….SECRET`, see the bot docs). Confirmation first; `true` / `false` as above. A code only works while the bot's owner has it on. |
+| `qm.chat.myBots()` | `addMembers` | 1.88.0 | `[{id, name, inChat}]`: only the bots you own. |
 | `qm.chats.unread()` | `unread` | 1.86.0 | `[{id, title}]` of the chats that are unread right now. |
 | `qm.chats.markRead(chatId)` | `markRead` | 1.87.2 | Sets your read marker to the chat's newest message; `true` when it worked. |
 | `qm.chats.markAllRead()` | `markRead` | 1.87.2 | Marks every unread chat as read; returns how many. |
@@ -465,5 +469,6 @@ The API number stays **1**: every addition so far is optional, so a plugin only 
 | 1.85.0 | `watchEdits`, `watchDeletes`; events `message-edited`, `message-deleted`. |
 | 1.86.0 | `watchMessages`, `typing`, `unread`, `watchReads`, `watchCalls`; events `chat-message`, `typing`, `unread-change`, `message-read`, `incoming-call`; `qm.chats.unread()`. |
 | 1.87.2 | `theme`, `nav`, `people`, `watchChatList`, `markRead`; `qm.theme`, `qm.nav`, `qm.people`, `qm.chats.markRead / markAllRead`; events `chat-added`, `chat-removed`. |
+| 1.88.0 | `addMembers`; `qm.chat.addUser`, `qm.chat.addBot`, `qm.chat.myBots`. |
 
 *Keeping this current:* when you add a permission, call or event, add it to the tables above with its **Since** version and a line in section 13, then run `python3 tools/build-docs.py`.

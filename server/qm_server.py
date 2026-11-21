@@ -162,12 +162,21 @@ BOT_RE = re.compile(r"^bot_[a-z0-9]{12}$")
 def bot_owner(bid): 
     o = get_at(["bots", bid, "owner"]); return o if isinstance(o, str) else None
 
+def join_ok(chat, bid, newtree):
+    """Someone who isn't the owner may add a bot when its owner left "add by code" on and the write carries the matching code."""
+    j = get_at(["botJoin", bid])
+    if not isinstance(j, dict) or j.get("on") is not True or not isinstance(j.get("code"), str): return False
+    return get_at(["botJoinUse", chat, bid], newtree) == j["code"]
+
 def can_read(uid, pp):
     if not pp: return False
     t = pp[0]
     if t == "bots": return len(pp) > 1
     if t == "botList": return len(pp) > 1 and pp[1] == uid
     if t == "botKeys": return len(pp) > 1 and bot_owner(pp[1]) == uid
+    if t == "botJoin": return len(pp) > 1 and bot_owner(pp[1]) == uid
+    if t == "botJoinUse": return False
+    if t == "botPerms": return len(pp) > 1 and bot_owner(pp[1]) == uid
     if t == "friend": return len(pp) > 1 and pp[1] == uid
     if t in ("friendPub", "friendCodes"): return len(pp) > 1                 # one entry at a time, never the whole list
     if t in ("accsettings", "userKeys", "linkPreviews"): return len(pp) > 1
@@ -186,6 +195,9 @@ def can_write(uid, pp, value, newtree):
         return o == uid
     if t == "botList": return len(pp) > 1 and pp[1] == uid
     if t == "botKeys": return len(pp) > 1 and bot_owner(pp[1]) == uid
+    if t == "botJoin": return len(pp) > 1 and BOT_RE.match(pp[1]) and bot_owner(pp[1]) == uid
+    if t == "botPerms": return len(pp) > 1 and BOT_RE.match(pp[1]) is not None and bot_owner(pp[1]) == uid
+    if t == "botJoinUse": return len(pp) > 2 and BOT_RE.match(pp[2]) is not None and member(pp[1], uid, newtree)
     if t == "accsettings" and len(pp) > 1 and BOT_RE.match(pp[1]): return bot_owner(pp[1]) == uid
     if t in ("friend", "friendPub"): return len(pp) > 1 and pp[1] == uid
     if t == "friendCodes":                                                    # claim a free code for yourself, release only your own
@@ -209,6 +221,9 @@ def can_write(uid, pp, value, newtree):
         existed = get_at(["privateChats", chat]) is not None
         if len(pp) == 2:
             if value is None: return member(chat, uid)
+            if isinstance(value, dict) and isinstance(value.get("participants"), dict):          # a bot can only be in a new chat if its owner makes it or the add code comes along
+                for k, v in value["participants"].items():
+                    if k.startswith("bot_") and v and bot_owner(k) != uid and not join_ok(chat, k, newtree): return False
             return (not existed) and member(chat, uid, newtree)
         if not member(chat, uid, newtree): return False
         sub = pp[2]
@@ -218,7 +233,7 @@ def can_write(uid, pp, value, newtree):
             elif len(pp) == 3 and isinstance(value, dict): adds = value
             have = get_at(["privateChats", chat, "participants"]) or {}
             for k, v in adds.items():
-                if k.startswith("bot_") and v and k not in have and bot_owner(k) != uid: return False
+                if k.startswith("bot_") and v and k not in have and bot_owner(k) != uid and not join_ok(chat, k, newtree): return False
             return True
         if sub == "messages" and len(pp) >= 4:
             if len(pp) == 4 and isinstance(value, dict) and any(k in value for k in ("botId", "as", "src")): return False     # only the bot API sets these
@@ -465,6 +480,10 @@ def bot_auth(tok):
     if not isinstance(bot, dict): _bad("This bot was deleted.", 401)
     return m.group(1), bot
 
+W_HITS = {}
+def get_at_path(path): return get_at(path.split("/"))
+def _upd(ups): apply_update(None, ups, trusted=True)
+
 def _in_chat(bid, chat):
     if not re.match(r"^[\w-]{1,64}$", str(chat or "")): _bad("chat is required.")
     if get_at(["privateChats", chat, "participants", bid]) is not True: _bad("This bot is not in that chat.", 403)
@@ -574,6 +593,64 @@ def bot_handle(method, route, q, b, tok):
             if get_at(["privateChats", chat, "lastMessage", "id"]) == key: ups["privateChats/%s/lastMessage/text" % chat] = text[:300]
             apply_update(None, ups, trusted=True); return {"ok": True}
         apply_update(None, {"privateChats/%s/messages/%s" % (chat, key): None, "privateChats/%s/media/%s" % (chat, key): None}, trusted=True)
+        return {"ok": True}
+    # ---- chats the bot manages itself. The riskier ones need the owner's switch (botPerms/{id}: createChats, addUsers, kickUsers).
+    if route in ("POST /createChat", "POST /addUser", "POST /kick", "POST /leave"):
+        def perm(name):
+            if get_at_path("botPerms/%s/%s" % (bid, name)) is not True: _bad('This bot\'s owner has not allowed "%s". They can switch it on in Account → Bots (the gear next to the bot\'s name).' % name, 403)
+        def writes():
+            t = time.time(); a = [x for x in W_HITS.get(bid, []) if t - x < 60] + [t]; W_HITS[bid] = a
+            if len(a) > 30: _bad("Slow down: at most 30 chat changes per minute.", 429)
+        def not_enc(chat):
+            if get_at_path("privateChats/%s/chatData/encrypted" % chat) is True: _bad("Not allowed in end-to-end encrypted chats (the bot has no key).", 403)
+        def find_user(who):
+            who = str(who or "").strip(); s = re.sub(r"[^A-Z0-9]", "", who.upper())
+            if s.startswith("QM"): s = s[2:]
+            u = None
+            if len(s) == 10 and re.match(r"^[BCDFGHJKMNPQRSTVWXZ2-9]{10}$", s): u = get_at_path("friendCodes/QM-%s-%s" % (s[:5], s[5:]))
+            elif who and not BOT_RE.match(who) and re.match(r"^[\w-]{6,64}$", who):
+                for c in list(get_at_path("chatList/%s" % bid) or {})[:100]:
+                    if get_at_path("privateChats/%s/participants/%s" % (c, who)) is True: u = who; break
+            if not isinstance(u, str) or not u or BOT_RE.match(u) or not get_at_path("accsettings/%s/settings" % u): _bad("No one can be added with that. Use their friend code (QM-…) or the uid of someone already in a chat with the bot.", 404)
+            return u
+        now = int(time.time() * 1000)
+        if route == "POST /createChat":
+            perm("createChats"); writes()
+            raw = b.get("users") if isinstance(b.get("users"), list) else []
+            raw = raw[:20]
+            if raw: perm("addUsers")
+            members = [bid]
+            for w in raw:
+                u = find_user(w)
+                if u not in members: members.append(u)
+            chat = push_id(); name = _clean(b.get("name"), 100)
+            c = {"participants": {m: True for m in members}, "lastMessage": {"fromUid": "", "text": "(No messages yet)", "timestamp": now}}
+            if name: c["chatData"] = {"name": name}
+            up = {"privateChats/%s" % chat: c}
+            for m in members: up["chatList/%s/%s" % (m, chat)] = True
+            _upd(up); return {"chat": chat}
+        _in_chat(bid, b.get("chat")); chat = b["chat"]
+        if route == "POST /addUser":
+            perm("addUsers"); not_enc(chat); writes()
+            u = find_user(b.get("user"))
+            if get_at_path("privateChats/%s/participants/%s" % (chat, u)) is True: _bad("They are already in this chat.", 409)
+            _upd({"privateChats/%s/participants/%s" % (chat, u): True, "chatList/%s/%s" % (u, chat): True,
+                    "privateChats/%s/messages/%s" % (chat, push_id()): {"fromUid": bid, "botId": bid, "type": "event", "event": "chat_add", "target": u, "text": "chat_add", "timestamp": now}})
+            return {"ok": True, "uid": u}
+        if route == "POST /kick":
+            perm("kickUsers"); not_enc(chat); writes()
+            u = str(b.get("user") or "")
+            if u == bid: _bad("Use leave to remove the bot itself.")
+            if u == bot.get("owner"): _bad("A bot can't remove its own owner.", 403)
+            if get_at_path("privateChats/%s/participants/%s" % (chat, u)) is not True: _bad("They are not in this chat.", 404)
+            _upd({"privateChats/%s/participants/%s" % (chat, u): None, "privateChats/%s/messageRead/%s" % (chat, u): None, "privateChats/%s/typing/%s" % (chat, u): None, "chatList/%s/%s" % (u, chat): None,
+                    "privateChats/%s/messages/%s" % (chat, push_id()): {"fromUid": bid, "botId": bid, "type": "event", "event": "chat_kick", "target": u, "text": "chat_kick", "timestamp": now}})
+            return {"ok": True}
+        others = [u for u in (get_at_path("privateChats/%s/participants" % chat) or {}) if u != bid]
+        if not others:
+            _upd({"privateChats/%s" % chat: None, "chatList/%s/%s" % (bid, chat): None}); return {"ok": True, "deleted": True}
+        _upd({"privateChats/%s/participants/%s" % (chat, bid): None, "chatList/%s/%s" % (bid, chat): None,
+                "privateChats/%s/messages/%s" % (chat, push_id()): {"fromUid": bid, "botId": bid, "type": "event", "event": "chat_leave", "text": "chat_leave", "timestamp": now}})
         return {"ok": True}
     _bad("Unknown route " + route, 404)
 

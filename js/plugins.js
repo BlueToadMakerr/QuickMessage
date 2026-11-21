@@ -87,7 +87,7 @@ Object.assign(qm,{
   messageView:{add:o=>call("view.add",[o]),remove:id=>call("view.remove",[id]),clear:()=>call("view.clear"),list:()=>call("view.list")},
   messageMenu:{add:o=>call("menu.add",[o]),remove:id=>call("menu.remove",[id]),clear:()=>call("menu.clear"),list:()=>call("menu.list")}
 });
-Object.assign(qm.chat,{getText:()=>call("chat.getText"),setText:t=>call("chat.setText",[t]),clearText:()=>call("chat.setText",[""]),focus:()=>call("chat.focus"),list:()=>call("chat.list"),info:()=>call("chat.info"),send:(t,o)=>call("chat.send",[t,o])});
+Object.assign(qm.chat,{getText:()=>call("chat.getText"),setText:t=>call("chat.setText",[t]),clearText:()=>call("chat.setText",[""]),focus:()=>call("chat.focus"),list:()=>call("chat.list"),info:()=>call("chat.info"),send:(t,o)=>call("chat.send",[t,o]),addUser:w=>call("chat.addUser",[w]),addBot:w=>call("chat.addBot",[w]),myBots:()=>call("chat.myBots")});
 Object.assign(qm.style,{vars:o=>call("style.vars",[o]),get:()=>call("style.get"),sheet:(id,css)=>call("style.sheet",[id,css]),removeSheet:id=>call("style.removeSheet",[id])});
 Object.assign(qm.storage,{keys:()=>call("storage.keys"),clear:()=>call("storage.clear"),usage:()=>call("storage.usage")});
 Object.assign(qm.page,{waitFor:(s,o)=>call("page.waitFor",[s,o]),text:(s,o)=>call("page.text",[s,o]),attr:(s,n,o)=>call("page.attr",[s,n,o]),count:(s,o)=>call("page.count",[s,o]),
@@ -545,6 +545,10 @@ const api = {
     if (ok) localToast(`${run.plugin.name} sent a message`, "info", 1500);
     return !!ok;
   },
+  // adding people and bots (permission "addMembers"; each add asks the person first)
+  "chat.addUser": (run, [w]) => { need(run, "addMembers"); return needChat().__qmAddUser(w, run.plugin.name); },
+  "chat.addBot": (run, [w]) => { need(run, "addMembers"); return needChat().__qmAddBot(w, run.plugin.name); },
+  "chat.myBots": run => { need(run, "addMembers"); return needChat().__qmMyBots(); },
   // messages (permission "messages")
   "messages.list": (run, [o]) => { need(run, "messages"); const w = msgWin(); if (!w) throw new Error("No chat is open."); o = o || {}; return msgFilter(w.__qmMsgs(), o).slice(-clampN(o.limit, 1, 300, 50)); },
   "messages.find": (run, [o]) => { need(run, "messages"); const w = msgWin(); if (!w) throw new Error("No chat is open."); o = o || {}; if (!o.text && !o.regex && !o.type && o.fromMe === undefined) throw new Error("Give text, regex, type or fromMe to look for."); return msgFilter(w.__qmMsgs(), o).slice(-clampN(o.limit, 1, 300, 20)); },

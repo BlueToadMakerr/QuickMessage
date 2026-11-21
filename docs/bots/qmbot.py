@@ -91,6 +91,11 @@ class QMBot:
     def call_state(self, chat, sid, audio=None, video=None): return self.call("callState", chat=chat, sid=sid, audio=audio, video=video)
     def call_leave(self, chat, sid): return self.call("callLeave", chat=chat, sid=sid)
     def delete(self, chat, id): return self.call("delete", chat=chat, id=id)
+    # needs the owner's switch (Account → Bots → the gear next to the bot's name): createChats / addUsers / kickUsers
+    def create_chat(self, name=None, users=None): return self.call("createChat", name=name, users=users or [])["chat"]   # users need addUsers: friend codes (QM-…) or uids of people already in a chat with the bot
+    def add_user(self, chat, user): return self.call("addUser", chat=chat, user=user)
+    def kick(self, chat, user): return self.call("kick", chat=chat, user=user)
+    def leave(self, chat): return self.call("leave", chat=chat)   # the bot removes itself from the chat (a "left the chat" line is posted)
 
     # ---- new messages
     def latest_event_key(self):

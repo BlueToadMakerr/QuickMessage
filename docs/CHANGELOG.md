@@ -2,6 +2,23 @@
 
 Newest first. Older rounds (1–43) are kept below exactly as they were written.
 
+## 1.89.0 — add bots by code, bots can leave, make chats, add and remove people, plugins can add members
+
+- **One box for everything**: a bot code goes in the same box as a friend code or email, both in a chat's Members section and in **Start a new chat** (which then makes a chat with just you and the bot).
+- **Bots can manage chats** (bot API, all three backends + `qmbot.py`): `createChat {name?, users?}`, `addUser {chat, user}`, `kick {chat, user}` and `leave`. A bot that leaves a chat nobody else is in deletes it. Not allowed in end-to-end encrypted chats; at most 30 changes per minute; a bot can't remove its own owner.
+- **Gear next to a bot's name** (Account → Bots): the owner switches `createChats`, `addUsers` and `kickUsers` on or off per bot. All off by default. Stored in `botPerms/{id}` (owner only).
+- Publish the new `database.rules.json` to Firebase (new `botJoin`, `botJoinUse`, `botPerms` nodes and the extra bot ops). Not tested on real Firebase rules (only on the private server's copy) or on real devices.
+
+## 1.88.0 — add bots by code, bots can leave, plugins can add members
+
+- **Bot add code**: in Account → Bots, **Add code** lets you turn on a code (`bot_….SECRET`) that other people paste in a chat's Members section (the same box that adds a person) to add your bot to their chat. You can turn it off or change it completely (new random code, or your own) at any time; the old code stops working immediately. Only you can read it.
+- **Add one of my bots…** is unchanged: it lists only the bots you own.
+- **Bot command to leave a chat**: `POST /leave {chat}` (op `leave`, `qmbot.py`: `bot.leave(chat)`) in the private server, the worker and the Firebase function. The bot is removed from the members and the chat list, and a "left the chat" line appears.
+- **Plugin permission `addMembers`** (high risk): `qm.chat.addUser(friendCodeOrEmail)`, `qm.chat.addBot(botIdOrCode)`, `qm.chat.myBots()`. Every add asks you to confirm, naming the plugin.
+- Database rules: new `botJoin` (owner only) and `botJoinUse` (write-only scratch, deleted right after use) nodes; the participants rule accepts a non-owner's bot add only with the current code while the switch is on.
+- Fix: the botInbox rule now also accepts the bot call ops (`callJoin`, `callLeave`, `callSessions`, `callSignals`, `callSignal`, `callState`) and `leave`. **Publish the new `database.rules.json` to Firebase** for the add code to work.
+- Not tested on real Firebase rules (only on the private server's copy of them) or on real devices.
+
 ## 1.87.2 — five more plugin permissions
 
 - **`theme`** (`qm.theme.get / set`): read and change light / dark / system, accent colour and Midnight (your real settings, so they stay).

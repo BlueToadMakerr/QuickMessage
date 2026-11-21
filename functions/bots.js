@@ -31,6 +31,8 @@ exports.sha256 = sha256;
 exports.BOT_RE = BOT_RE;
 
 // at most 20 posts per 10 seconds per bot (per server instance; enough to stop a runaway loop)
+const FRIEND_RE = /^QM-[BCDFGHJKMNPQRSTVWXZ2-9]{5}-[BCDFGHJKMNPQRSTVWXZ2-9]{5}$/;
+const wHits = new Map();
 const hits = new Map();
 const limited = id => { const now = Date.now(), a = (hits.get(id) || []).filter(t => now - t < 10000); a.push(now); hits.set(id, a); return a.length > 20; };
 
@@ -160,6 +162,56 @@ exports.handle = async function handle(db, req) {
     }
     const up = { [`privateChats/${chat}/messages/${key}`]: null, [`privateChats/${chat}/media/${key}`]: null };
     await db.update(up); return { ok: true };
+  }
+  // ---- chats the bot manages itself. The riskier ones need the owner's switch (botPerms/{id}: createChats, addUsers, kickUsers).
+  const perm = async name => { if ((await db.get(`botPerms/${id}/${name}`)) !== true) bad(`This bot's owner has not allowed "${name}". They can switch it on in Account → Bots (the gear next to the bot's name).`, 403); };
+  const writes = () => { const t = now(), a = (wHits.get(id) || []).filter(x => t - x < 60000); a.push(t); wHits.set(id, a); if (a.length > 30) bad("Slow down: at most 30 chat changes per minute.", 429); };
+  const notEnc = async chat => { if ((await db.get(`privateChats/${chat}/chatData/encrypted`)) === true) bad("Not allowed in end-to-end encrypted chats (the bot has no key).", 403); };
+  const findUser = async who => {
+    who = String(who || "").trim(); let s = who.toUpperCase().replace(/[^A-Z0-9]/g, ""); if (s.startsWith("QM")) s = s.slice(2);
+    let u = null;
+    if (s.length === 10 && FRIEND_RE.test("QM-" + s.slice(0, 5) + "-" + s.slice(5))) u = await db.get(`friendCodes/QM-${s.slice(0, 5)}-${s.slice(5)}`);
+    else if (who && !BOT_RE.test(who) && /^[\w-]{6,64}$/.test(who)) {              // a uid: only someone who is already in a chat with this bot
+      for (const c of Object.keys((await db.get(`chatList/${id}`)) || {}).slice(0, 100)) if ((await db.get(`privateChats/${c}/participants/${who}`)) === true) { u = who; break; }
+    }
+    if (typeof u !== "string" || !u || BOT_RE.test(u) || !(await db.get(`accsettings/${u}/settings`))) bad("No one can be added with that. Use their friend code (QM-…) or the uid of someone already in a chat with the bot.", 404);
+    return u;
+  };
+  if (route === "POST /createChat") {
+    await perm("createChats"); writes();
+    const raw = Array.isArray(b.users) ? b.users.slice(0, 20) : [];
+    if (raw.length) await perm("addUsers");
+    const members = new Set([id]); for (const w of raw) members.add(await findUser(w));
+    const chat = db.newKey(), ts = now(), name = clean(b.name, 100), part = {}; for (const m of members) part[m] = true;
+    const up = { [`privateChats/${chat}`]: { participants: part, ...(name ? { chatData: { name } } : {}), lastMessage: { fromUid: "", text: "(No messages yet)", timestamp: ts } } };
+    for (const m of members) up[`chatList/${m}/${chat}`] = true;
+    await db.update(up); return { chat };
+  }
+  if (route === "POST /addUser") {
+    await perm("addUsers"); await inChat(db, id, b.chat); await notEnc(b.chat); writes();
+    const u = await findUser(b.user);
+    if ((await db.get(`privateChats/${b.chat}/participants/${u}`)) === true) bad("They are already in this chat.", 409);
+    await db.update({ [`privateChats/${b.chat}/participants/${u}`]: true, [`chatList/${u}/${b.chat}`]: true,
+      [`privateChats/${b.chat}/messages/${db.newKey()}`]: { fromUid: id, botId: id, type: "event", event: "chat_add", target: u, text: "chat_add", timestamp: now() } });
+    return { ok: true, uid: u };
+  }
+  if (route === "POST /kick") {
+    await perm("kickUsers"); await inChat(db, id, b.chat); await notEnc(b.chat); writes();
+    const u = String(b.user || "");
+    if (u === id) bad("Use leave to remove the bot itself.");
+    if (u === bot.owner) bad("A bot can't remove its own owner.", 403);
+    if ((await db.get(`privateChats/${b.chat}/participants/${u}`)) !== true) bad("They are not in this chat.", 404);
+    await db.update({ [`privateChats/${b.chat}/participants/${u}`]: null, [`privateChats/${b.chat}/messageRead/${u}`]: null, [`privateChats/${b.chat}/typing/${u}`]: null, [`chatList/${u}/${b.chat}`]: null,
+      [`privateChats/${b.chat}/messages/${db.newKey()}`]: { fromUid: id, botId: id, type: "event", event: "chat_kick", target: u, text: "chat_kick", timestamp: now() } });
+    return { ok: true };
+  }
+  if (route === "POST /leave") {
+    await inChat(db, id, b.chat);
+    const others = Object.keys((await db.get(`privateChats/${b.chat}/participants`)) || {}).filter(u => u !== id);
+    if (!others.length) { await db.update({ [`privateChats/${b.chat}`]: null, [`chatList/${id}/${b.chat}`]: null }); return { ok: true, deleted: true }; }   // nobody left: the chat goes away
+    await db.update({ [`privateChats/${b.chat}/participants/${id}`]: null, [`chatList/${id}/${b.chat}`]: null,
+      [`privateChats/${b.chat}/messages/${db.newKey()}`]: { fromUid: id, botId: id, type: "event", event: "chat_leave", text: "chat_leave", timestamp: now() } });
+    return { ok: true };
   }
   bad("Unknown route " + route, 404);
 };

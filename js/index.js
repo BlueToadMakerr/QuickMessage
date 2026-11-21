@@ -34,6 +34,7 @@ import { DEFAULT_DB_URL, customDbUrl, cleanDbUrl, setDbUrl } from "./dburl.js";
 import { openPreview } from "./msgcrypto.js";
 import { requireVerified, isVerified, refreshVerified, resendVerification, watchVerified } from "./verify.js";
 import { resolveRecipient } from "./recipient.js";
+import { parseBotCode, newChatWithBot } from "./bots.js";
 import { ensureFriend } from "./friend.js";
 
 import "./serverbox.js";
@@ -433,11 +434,11 @@ window.addEventListener("qm-uploads", paintUploadBadges);
 // ---------- start a new chat ----------
 const ncDialog = $("newChatDialog"), ncForm = $("newChatForm");
 const ncInput = $("toUid"), ncPreview = $("ncPreview"), ncError = $("ncError"), ncGo = $("ncGo");
-let ncTarget = null;
+let ncTarget = null, ncBot = null;                        // ncBot: a bot code (a chat with just you and the bot)
 wireDialog(ncDialog);
 
 function resetNewChat() {
-  ncTarget = null;
+  ncTarget = null; ncBot = null;
   ncInput.value = "";
   ncInput.disabled = false;
   ncPreview.classList.add("hidden");
@@ -449,7 +450,7 @@ function resetNewChat() {
 newChatBtn.onclick = () => { resetNewChat(); ncDialog.showModal(); ncInput.focus(); };
 $("ncClose").onclick = $("ncCancel").onclick = () => ncDialog.close();
 ncInput.addEventListener("input", () => {
-  if (ncTarget) { ncTarget = null; ncPreview.classList.add("hidden"); ncGo.textContent = "Continue"; }
+  if (ncTarget || ncBot) { ncTarget = null; ncBot = null; ncPreview.classList.add("hidden"); ncGo.textContent = "Continue"; }
   ncError.classList.add("hidden");
 });
 
@@ -458,13 +459,25 @@ ncForm.addEventListener("submit", async e => {
   const uid = auth.currentUser?.uid;
   if (!uid) return;
 
-  if (!ncTarget) {
+  if (!ncTarget && !ncBot) {
     const fail = msg => { ncError.textContent = msg; ncError.classList.remove("hidden"); };
     if (!ncInput.value.trim()) return fail("Enter a friend code or an email address.");
     if (!requireVerified("start chats")) return;
 
     ncGo.disabled = true;
     try {
+      const pc = parseBotCode(ncInput.value);
+      if (pc) {                                                // a bot code: start a chat with only the bot
+        const bp = (await profileExists(pc.id)) ? await getProfile(pc.id).catch(() => null) : null;
+        if (!bp || !bp.displayName) { fail("No bot with that code."); return; }
+        ncPreview.replaceChildren(avatarEl(bp.displayName, bp.pfp, "avatar"));
+        const n = document.createElement("div");
+        n.innerHTML = `<div class="name"></div><div class="hint">A bot. Start a chat with just you and it?</div>`;
+        n.querySelector(".name").textContent = bp.displayName;
+        ncPreview.append(n); ncPreview.classList.remove("hidden");
+        ncBot = ncInput.value; ncGo.textContent = "Start chat";
+        return;
+      }
       let other;
       try { other = await resolveRecipient(ncInput.value); } catch (e) { fail(e.message); return; }
       if (other === uid) { fail("You can't chat with yourself."); return; }
@@ -484,6 +497,12 @@ ncForm.addEventListener("submit", async e => {
     return;
   }
 
+  if (ncBot) {
+    ncGo.disabled = true;
+    try { const id = await newChatWithBot(uid, ncBot); ncDialog.close?.(); QM.openChat(id); }
+    catch (err) { ncGo.disabled = false; ncError.textContent = err.message || "Couldn't create the chat."; ncError.classList.remove("hidden"); }
+    return;
+  }
   // Reuse an existing 1:1 chat instead of creating duplicates
   // (more than one chat between the same two people is fine: that is also how group chats start. Ask which one is meant.)
   const existing = [...chats.values()].filter(s => s.participants && s.participants.length === 2 && s.participants.includes(ncTarget))

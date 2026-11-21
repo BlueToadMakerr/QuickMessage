@@ -33,6 +33,7 @@ export const PERMISSIONS = {
   calls:    { label: "Know when you are in a call", risk: "medium" },
   devinfo:  { label: "Read developer info and add cards to developer views", risk: "medium" },
   send:      { label: "Send messages in the open chat for you", risk: "high" },
+  addMembers: { label: "Add people and bots to the open chat (asks you each time)", risk: "high" },
   clipboard: { label: "Copy text to the clipboard", risk: "medium" },
   notify:    { label: "Show notifications and vibrate", risk: "low" },
   keys:      { label: "Add keyboard shortcuts", risk: "low" },
@@ -52,7 +53,7 @@ export const PERMISSIONS = {
 export const PERM_GROUPS = [
   { id: "look", label: "Look & feel", hint: "Colours, buttons, windows, messages on screen", perms: ["style", "messageView", "panel", "buttons", "ui", "toast", "notify", "badge", "sound", "speech", "theme", "nav"] },
   { id: "read", label: "Reading your chats", hint: "What the plugin can see", perms: ["me", "chat", "messages", "people", "watchChatList", "watchMessages", "watchEdits", "watchDeletes", "typing", "unread", "watchReads", "watchCalls", "calls", "devinfo"] },
-  { id: "write", label: "Writing & sending", hint: "Putting text in chats, editing or deleting your messages", perms: ["say", "markRead", "commands", "triggers", "keys", "menu", "send", "beforeSend", "editOwn", "deleteOwn"] },
+  { id: "write", label: "Writing & sending", hint: "Putting text in chats, editing or deleting your messages", perms: ["say", "markRead", "commands", "triggers", "keys", "menu", "send", "addMembers", "beforeSend", "editOwn", "deleteOwn"] },
   { id: "device", label: "Your device & sharing", hint: "Clipboard, files, links, downloads", perms: ["clipboard", "share", "download", "files", "links"] },
   { id: "power", label: "Network & control", hint: "Contacting other websites, controlling the page", perms: ["network", "page"] },
   { id: "danger", label: "Danger zone", hint: "Full access", perms: ["unsandboxed"] }
@@ -135,6 +136,7 @@ export const PERM_INFO = {
   calls: "Knows when you are in a call and with which chat.",
   devinfo: "Can read developer information and add cards to the developer views.",
   send: "Can send messages in the open chat as you, without asking each time.",
+  addMembers: "Can ask to add a person (by friend code or email) or a bot (one of yours, or one with a code) to the open chat. You get a confirmation each time, naming the plugin.",
   clipboard: "Can put text on your clipboard (it can overwrite what you copied).",
   notify: "Can show system notifications and make your phone vibrate.",
   keys: "Can add keyboard shortcuts.",

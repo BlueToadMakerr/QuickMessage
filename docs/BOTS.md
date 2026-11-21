@@ -27,12 +27,29 @@ Ops and arguments (the answer `body` is the JSON shown for the HTTP routes below
 | `GET /messages?chat=&after=<id>&limit=` = `messages` | Messages (oldest first). Encrypted ones come back `encrypted:true` with no text |
 | `POST /send {chat, text, as:{name,pfp}, src, replyTo:{key}, file:{url,name,kind,mime,size}}` = `send` | Post a message |
 | `PATCH /message {chat,id,text}` = `edit`, `DELETE /message {chat,id}` = `delete` | Edit or delete the bot's own messages |
+| `POST /leave {chat}` = `leave` | The bot leaves the chat: it is removed from the members and the chat list, and a "left the chat" line is shown. Someone has to add it again to bring it back. If nobody else is in the chat it is deleted |
+| `POST /createChat {name?, users?}` = `createChat` | The bot makes a new chat it is in; answer `{chat}`. `users` (up to 20) puts people in it from the start. **Needs the owner's `createChats` switch** (and `addUsers` when `users` is used) |
+| `POST /addUser {chat, user}` = `addUser` | Adds a person to a chat the bot is in. `user` is a friend code (`QM-…`; works only while its owner has it on) or the uid of someone already in a chat with the bot. A line "bot added X" is shown. **Needs `addUsers`.** Not allowed in end-to-end encrypted chats |
+| `POST /kick {chat, user}` = `kick` | Removes a person (uid from `members`) from a chat the bot is in, with a "removed" line. It can't remove its own owner or itself (use `leave`). **Needs `kickUsers`.** Not allowed in end-to-end encrypted chats |
 | `POST /callJoin {chat, audio, video}` = `callJoin` | The bot joins the chat's call as one more participant: answer `{sid, sessions}` (`sid` = the bot's session). Not allowed in end-to-end encrypted chats |
 | `GET /callSessions?chat=` = `callSessions` | Everybody else in the call: `{sid, uid, name, bot, audio, video, screen}` |
 | `GET /callSignals?chat=&sid=` = `callSignals` | The WebRTC signals other sessions sent to this one (`{id, from, t, epoch, d}`, oldest first, read once) |
 | `POST /callSignal {chat, sid, to:{uid,sid}, t:"desc"\|"cand", d, epoch}` = `callSignal` | Send a WebRTC signal (offer / answer / candidate) to one session |
 | `PATCH /callState {chat, sid, audio, video}` = `callState` | Tell the call whether the bot's mic / camera is on |
 | `POST /callLeave {chat, sid}` = `callLeave` | Leave the call |
+
+## What the owner lets a bot do (the gear)
+
+Next to each bot's name in Account → Bots there is a gear (⚙). It has three switches, **all off until the owner turns them on**: *Start its own chats* (`createChats`), *Add people to chats* (`addUsers`) and *Remove people from chats* (`kickUsers`). Without the switch the request answers `403`. Posting, reading, editing its own messages and leaving a chat are always allowed. A bot is limited to 30 chat changes (create / add / remove) per minute.
+
+## Letting other people add your bot (add code)
+
+In Account → Bots, press **Add code** on a bot. Turn it on and QuickMessage shows a code like `bot_abc123def456.K7M2Q9XT3A` (the bot id, a dot, and a secret). Anyone who has the code can paste it in the same box they use to add a person (chat options → Members → *Add someone by friend code, email or bot code*) and the bot joins that chat. In **Start a new chat** the code starts a chat with just that person and the bot. You can:
+
+- **Turn it off** at any time: the code stops working at once (bots already in chats stay there).
+- **Get a new random code** or **use your own** (6 to 40 letters, numbers, `-` or `_`): the old code stops working at once.
+
+Only the bot's owner can read or change the code. With the code off, only you can add the bot (through *Add one of my bots…*, which lists just the bots you own). A code never lets anyone read the bot's token. A bot can also remove itself with `leave`.
 
 ## Calls
 

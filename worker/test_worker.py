@@ -172,6 +172,26 @@ for nm, fn in [("bad token", lambda: H("GET", "/me", tok=token[:-1] + "B")), ("o
 H("PATCH", "/message", b={"chat": "c1", "id": s["id"], "text": "edited"}); t("edit own", f.get(f"privateChats/c1/messages/{s['id']}/text") == "edited" and f.get("privateChats/c1/lastMessage/text") == "edited")
 H("DELETE", "/message", b={"chat": "c1", "id": s["id"]}); t("delete own", f.get(f"privateChats/c1/messages/{s['id']}") is None)
 
+# bot-managed chats (permissions are off until the owner switches them on)
+def refused(fn):
+    try: fn(); return False
+    except botapi.BotError as e: return e.status == 403
+f.t.setdefault("accsettings", {}).setdefault("alice", {})["settings"] = {"displayName": "Alice"}; f.t["accsettings"].setdefault("bob", {})["settings"] = {"displayName": "Bob"}
+f.set("bots/bot_abcdefghij12/owner", "alice"); f.set("friendCodes/QM-BCDFG-HJKMN", "bob")
+t("createChat off by default", refused(lambda: H("POST", "/createChat", b={"name": "x"})))
+t("addUser off by default", refused(lambda: H("POST", "/addUser", b={"chat": "c1", "user": "QM-BCDFG-HJKMN"})))
+t("kick off by default", refused(lambda: H("POST", "/kick", b={"chat": "c1", "user": "bob"})))
+f.set("botPerms/bot_abcdefghij12", {"createChats": True, "addUsers": True, "kickUsers": True})
+nc = H("POST", "/createChat", b={"name": "Room", "users": ["QM-BCDFG-HJKMN"]})["chat"]
+t("createChat with a friend code", set(f.get(f"privateChats/{nc}/participants")) == {"bot_abcdefghij12", "bob"} and f.get(f"chatList/bob/{nc}") is True and f.get(f"privateChats/{nc}/chatData/name") == "Room")
+f.set("privateChats/c1/participants/bob", None)
+t("addUser", H("POST", "/addUser", b={"chat": "c1", "user": "QM-BCDFG-HJKMN"})["uid"] == "bob" and f.get("privateChats/c1/participants/bob") is True)
+t("kick the owner refused", refused(lambda: H("POST", "/kick", b={"chat": "c1", "user": "alice"})))
+H("POST", "/kick", b={"chat": "c1", "user": "bob"}); t("kick", f.get("privateChats/c1/participants/bob") is None and f.get("chatList/bob/c1") is None)
+f.set("privateChats/c1/participants/bob", True)
+H("POST", "/leave", b={"chat": nc}); t("leave keeps a chat with people", f.get(f"privateChats/{nc}/participants/bot_abcdefghij12") is None and f.get(f"privateChats/{nc}/participants/bob") is True)
+solo = H("POST", "/createChat", b={})["chat"]; t("leaving as the last member deletes the chat", H("POST", "/leave", b={"chat": solo}).get("deleted") and f.get(f"privateChats/{solo}") is None)
+
 # requests through the database
 inbox = lambda rid, **kw: {"token": token, "op": "me", "ts": now(), **kw}
 f.set("botInbox/bot_abcdefghij12/req00000000000000000A", inbox("x")); w.on_request("bot_abcdefghij12", "req00000000000000000A", f.get("botInbox/bot_abcdefghij12/req00000000000000000A"))
