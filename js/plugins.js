@@ -4,6 +4,7 @@
 import { devOn, onDev, envInfo } from "./dev.js";
 import { loadPlugins, pluginIssues, isBlocked, unreviewed, MAX_CODE, cleanSchema, cleanSettingValue, loadSchema, saveSchema, loadSettings, saveSettings } from "./plugin-store.js";
 import { SITE_VERSION, API_VERSION } from "./version.js";
+import { getTheme, applyTheme, getAppearance, setAppearance, getColors } from "./theme.js";
 import { localToast, promptDialog, confirmDialog } from "./ui.js";
 
 const runs = new Map();                 // plugin id -> { frame, plugin, handlers, panelEl, styles }
@@ -76,7 +77,10 @@ Object.assign(qm,{
   download:{save:(name,data,type)=>call("download.save",[name,data,type])},
   files:{pick:o=>call("files.pick",[o])},
   links:{open:u=>call("links.open",[u])},
-  chats:{unread:()=>call("chats.unread")},
+  chats:{unread:()=>call("chats.unread"),markRead:id=>call("chats.markRead",[id]),markAllRead:()=>call("chats.markAllRead")},
+  theme:{get:()=>call("theme.get"),set:o=>call("theme.set",[o])},
+  people:{list:()=>call("people.list")},
+  nav:{open:t=>call("nav.open",[t])},
   settings:{define:o=>call("settings.define",[o]),get:k=>call("settings.get",[k]),set:(k,v)=>call("settings.set",[k,v])},
   beforeSend:f=>{beforeFn=typeof f==="function"?f:null;return call("beforeSend.set",[!!beforeFn]);},
   triggers:{add:o=>{o=o||{};const id=String(o.id||o.char||"").slice(0,40);if(typeof o.items==="function")trigFns[id]=o.items;else delete trigFns[id];return call("triggers.add",[{id,char:o.char,title:o.title,items:Array.isArray(o.items)?o.items:null,dynamic:typeof o.items==="function"}]);},remove:id=>{delete trigFns[id];return call("triggers.remove",[id]);},clear:()=>{for(const k in trigFns)delete trigFns[k];return call("triggers.clear");},list:()=>call("triggers.list")},
@@ -496,6 +500,32 @@ const api = {
   "chat.getText": run => { need(run, "chat"); return needChat().__qmComposer.get(); },
   "chat.setText": (run, [t]) => { need(run, "chat"); needChat().__qmComposer.set(String(t ?? "").slice(0, 4000)); },
   "chat.focus": run => { need(run, "chat"); needChat().__qmComposer.focus(); },
+  "theme.get": run => { need(run, "theme"); return { mode: getTheme(), dark: isDark(), ...getAppearance(), colors: getColors() }; },
+  "theme.set": (run, [o]) => {
+    need(run, "theme"); o = o || {};
+    if (o.mode !== undefined && !["system", "light", "dark"].includes(o.mode)) throw new Error('mode must be "system", "light" or "dark".');
+    if ("accent" in o && o.accent && !/^#[0-9a-f]{6}$/i.test(o.accent)) throw new Error('accent must look like "#e11d48" (or "" for the default).');
+    if (o.mode !== undefined) applyTheme(o.mode);
+    const a = {}; if ("accent" in o) a.accent = o.accent || ""; if ("midnight" in o) a.midnight = !!o.midnight;
+    if (Object.keys(a).length) setAppearance(a);
+    return true;
+  },
+  "people.list": async run => {
+    need(run, "people");
+    for (let i = 0; i < 20; i++) {                                    // the chat may still be loading its members: wait up to 3 s
+      try { const w = msgWin(), l = w && w.__qmPeople ? w.__qmPeople() : []; if (l.length && l.every(x => x.name)) return l; if (i === 19) return l; } catch (_) { /* not ready */ }
+      await new Promise(r => setTimeout(r, 150));
+    }
+    return [];
+  },
+  "nav.open": async (run, [target]) => {
+    need(run, "nav");
+    const q = await import("./qmlinks.js"), p = q.parse(String(target || ""), false);
+    if (!p || p.kind === "call") throw new Error("Give a QuickMessage link such as qm:chat/ID, qm:message/CHAT/KEY, qm:settings/appearance or qm:page/NAME (calls can't be opened).");
+    await q.open(p); return true;
+  },
+  "chats.markRead": async (run, [id]) => { need(run, "markRead"); return !!(await (window.__qmMarkRead ? window.__qmMarkRead(String(id || "")) : false)); },
+  "chats.markAllRead": async run => { need(run, "markRead"); return window.__qmMarkRead ? await window.__qmMarkRead(null) : 0; },
   "chats.unread": run => { need(run, "unread"); try { return (window.__qmUnread ? window.__qmUnread() : []).slice(0, 200); } catch (_) { return []; } },
   "chat.list": run => {
     need(run, "chat"); const withPreview = run.plugin.permissions.includes("messages");
@@ -709,7 +739,7 @@ const api = {
 };
 
 function send(run, event, data) { try { run.frame.contentWindow.postMessage({ qm: 1, event, data }, "*"); } catch (_) { /* frame gone */ } }
-const PERM_OF = { message: "messages", "chat-open": "chat", "chat-close": "chat", button: "buttons", "call-state": "calls", "dev-view": "devinfo", "page-load": "page", key: "keys", command: "commands", "banner-button": "panel", "ui-action": "ui", "ui-close": "ui", "menu-click": "menu", "trigger-query": "triggers", "trigger-pick": "triggers", "before-send": "beforeSend", "message-edited": "watchEdits", "message-deleted": "watchDeletes", "chat-message": "watchMessages", typing: "typing", "unread-change": "unread", "message-read": "watchReads", "incoming-call": "watchCalls" };
+const PERM_OF = { message: "messages", "chat-open": "chat", "chat-close": "chat", button: "buttons", "call-state": "calls", "dev-view": "devinfo", "page-load": "page", key: "keys", command: "commands", "banner-button": "panel", "ui-action": "ui", "ui-close": "ui", "menu-click": "menu", "trigger-query": "triggers", "trigger-pick": "triggers", "before-send": "beforeSend", "message-edited": "watchEdits", "message-deleted": "watchDeletes", "chat-message": "watchMessages", typing: "typing", "unread-change": "unread", "message-read": "watchReads", "incoming-call": "watchCalls", "chat-added": "watchChatList", "chat-removed": "watchChatList" };
 const wants = (run, event) => !PERM_OF[event] || run.plugin.permissions.includes(PERM_OF[event]);
 
 addEventListener("message", async e => {

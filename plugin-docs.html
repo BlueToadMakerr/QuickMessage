@@ -155,6 +155,18 @@ qm.on('chat-open', () =&gt; qm.toast('You opened a chat'));
 <td><code>qm.messageView.*</code>: change how messages look on screen (display only)</td>
 <td>1.82.0</td>
 </tr>
+<tr>
+<td><code>theme</code></td>
+<td>medium</td>
+<td><code>qm.theme.get()</code> / <code>qm.theme.set({mode?, accent?, midnight?})</code>: read and change your real theme settings (they stay until changed back)</td>
+<td>1.87.2</td>
+</tr>
+<tr>
+<td><code>nav</code></td>
+<td>low</td>
+<td><code>qm.nav.open(link)</code>: opens a page, settings tab, chat or message for you, like tapping a QuickMessage link (never a call or a website)</td>
+<td>1.87.2</td>
+</tr>
 </tbody>
 </table></div>
 <h3 id="reading-your-chats">Reading your chats</h3>
@@ -209,6 +221,18 @@ qm.on('chat-open', () =&gt; qm.toast('You opened a chat'));
 <td>medium</td>
 <td>event <code>message-deleted</code> (open chat). The text only with <code>messages</code> too</td>
 <td>1.85.0</td>
+</tr>
+<tr>
+<td><code>people</code></td>
+<td>medium</td>
+<td><code>qm.people.list()</code>: names of the people in the open chat</td>
+<td>1.87.2</td>
+</tr>
+<tr>
+<td><code>watchChatList</code></td>
+<td>low</td>
+<td>events <code>chat-added</code>, <code>chat-removed</code>: your chat list gained or lost a chat</td>
+<td>1.87.2</td>
 </tr>
 <tr>
 <td><code>watchMessages</code></td>
@@ -294,6 +318,12 @@ qm.on('chat-open', () =&gt; qm.toast('You opened a chat'));
 <td>high</td>
 <td><code>qm.messages.delete(key)</code> on your own messages (you confirm each time)</td>
 <td>1.82.0</td>
+</tr>
+<tr>
+<td><code>markRead</code></td>
+<td>medium</td>
+<td><code>qm.chats.markRead(chatId)</code>, <code>qm.chats.markAllRead()</code>: mark chats as read (the other people see you read them)</td>
+<td>1.87.2</td>
 </tr>
 <tr>
 <td><code>say</code></td>
@@ -623,6 +653,42 @@ qm.on('chat-open', () =&gt; qm.toast('You opened a chat'));
 <td><code>unread</code></td>
 <td>1.86.0</td>
 <td><code>[{id, title}]</code> of the chats that are unread right now.</td>
+</tr>
+<tr>
+<td><code>qm.chats.markRead(chatId)</code></td>
+<td><code>markRead</code></td>
+<td>1.87.2</td>
+<td>Sets your read marker to the chat's newest message; <code>true</code> when it worked.</td>
+</tr>
+<tr>
+<td><code>qm.chats.markAllRead()</code></td>
+<td><code>markRead</code></td>
+<td>1.87.2</td>
+<td>Marks every unread chat as read; returns how many.</td>
+</tr>
+<tr>
+<td><code>qm.people.list()</code></td>
+<td><code>people</code></td>
+<td>1.87.2</td>
+<td><code>[{uid, name, you}]</code> for the open chat (waits up to 3 s while the chat loads).</td>
+</tr>
+<tr>
+<td><code>qm.theme.get()</code></td>
+<td><code>theme</code></td>
+<td>1.87.2</td>
+<td><code>{mode: "system"|"light"|"dark", dark, accent, midnight, material, colors}</code>.</td>
+</tr>
+<tr>
+<td><code>qm.theme.set({mode?, accent?, midnight?})</code></td>
+<td><code>theme</code></td>
+<td>1.87.2</td>
+<td><code>mode</code> as above, <code>accent</code> like <code>"#e11d48"</code> (or <code>""</code> for the default), <code>midnight</code> true/false. Changes the real settings at once, everywhere.</td>
+</tr>
+<tr>
+<td><code>qm.nav.open(link)</code></td>
+<td><code>nav</code></td>
+<td>1.87.2</td>
+<td><code>link</code>: <code>"qm:chat/ID"</code>, <code>"qm:message/CHAT/KEY"</code>, <code>"qm:settings/appearance"</code>, <code>"qm:page/NAME"</code>. Rejects anything else (calls, websites).</td>
 </tr>
 </tbody>
 </table></div>
@@ -1039,6 +1105,12 @@ qm.on('chat-open', () =&gt; qm.toast('You opened a chat'));
 <td><code>{values}</code></td>
 </tr>
 <tr>
+<td><code>chat-added</code> / <code>chat-removed</code></td>
+<td><code>watchChatList</code></td>
+<td>1.87.2</td>
+<td><code>{chatId, title}</code> when a chat joins or leaves your list (not for the chats loaded at start).</td>
+</tr>
+<tr>
 <td><code>message-edited</code></td>
 <td><code>watchEdits</code></td>
 <td>1.85.0</td>
@@ -1277,6 +1349,10 @@ qm.toast(j.setup + ' ' + j.punchline);
 <tr>
 <td>1.86.0</td>
 <td><code>watchMessages</code>, <code>typing</code>, <code>unread</code>, <code>watchReads</code>, <code>watchCalls</code>; events <code>chat-message</code>, <code>typing</code>, <code>unread-change</code>, <code>message-read</code>, <code>incoming-call</code>; <code>qm.chats.unread()</code>.</td>
+</tr>
+<tr>
+<td>1.87.2</td>
+<td><code>theme</code>, <code>nav</code>, <code>people</code>, <code>watchChatList</code>, <code>markRead</code>; <code>qm.theme</code>, <code>qm.nav</code>, <code>qm.people</code>, <code>qm.chats.markRead / markAllRead</code>; events <code>chat-added</code>, <code>chat-removed</code>.</td>
 </tr>
 </tbody>
 </table></div>

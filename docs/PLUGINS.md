@@ -67,6 +67,8 @@ Risk is what the review shows. **Since** is the site version that added it.
 | `sound` | low | `qm.sound.play("beep"\|"success"\|"error"\|"alert")` | 1.52.0 |
 | `badge` | low | `qm.badge.set(n)`, `qm.badge.clear()` (app icon badge and a number in the tab title) | 1.52.0 |
 | `messageView` | medium | `qm.messageView.*`: change how messages look on screen (display only) | 1.82.0 |
+| `theme` | medium | `qm.theme.get()` / `qm.theme.set({mode?, accent?, midnight?})`: read and change your real theme settings (they stay until changed back) | 1.87.2 |
+| `nav` | low | `qm.nav.open(link)`: opens a page, settings tab, chat or message for you, like tapping a QuickMessage link (never a call or a website) | 1.87.2 |
 
 ### Reading your chats
 
@@ -79,6 +81,8 @@ Risk is what the review shows. **Since** is the site version that added it.
 | `devinfo` | medium | `qm.dev.*`: read developer info and add cards to the developer views; event `dev-view` | 1.46.0 |
 | `watchEdits` | medium | event `message-edited` (open chat). Old and new text only with `messages` too | 1.85.0 |
 | `watchDeletes` | medium | event `message-deleted` (open chat). The text only with `messages` too | 1.85.0 |
+| `people` | medium | `qm.people.list()`: names of the people in the open chat | 1.87.2 |
+| `watchChatList` | low | events `chat-added`, `chat-removed`: your chat list gained or lost a chat | 1.87.2 |
 | `watchMessages` | medium | event `chat-message`: a new message in **any** of your chats (no extra database reads). Text only with `messages` too | 1.86.0 |
 | `typing` | low | event `typing`: someone started / stopped typing in any chat | 1.86.0 |
 | `unread` | low | `qm.chats.unread()` and event `unread-change` (chat names only, no text) | 1.86.0 |
@@ -96,6 +100,7 @@ Risk is what the review shows. **Since** is the site version that added it.
 | `send` | high | `qm.chat.send()`, `qm.messages.reply()`: sends in the open chat as you (5 per 10 seconds; a small notice says the plugin sent it) | 1.48.0 |
 | `editOwn` | high | `qm.messages.edit(key, text)` on your own messages | 1.82.0 |
 | `deleteOwn` | high | `qm.messages.delete(key)` on your own messages (you confirm each time) | 1.82.0 |
+| `markRead` | medium | `qm.chats.markRead(chatId)`, `qm.chats.markAllRead()`: mark chats as read (the other people see you read them) | 1.87.2 |
 | `say` | medium | `qm.messages.say(text)`: a message from the plugin that only **you** see (never sent or saved) | 1.84.0 |
 | `beforeSend` | high | `qm.beforeSend(fn)`: your message passes through the plugin before it is sent (rewrite or cancel) | 1.84.0 |
 
@@ -173,6 +178,12 @@ Every method that talks to the site returns a Promise. **Needs** names the permi
 | `qm.chat.info()` | `chat` | 1.48.0 | `{chatId, title}` of the open chat. |
 | `qm.chat.send(text, {replyTo?})` | `send` | 1.48.0 | Sends like pressing Send (mentions and replies work). 5 per 10 seconds. Returns a boolean. |
 | `qm.chats.unread()` | `unread` | 1.86.0 | `[{id, title}]` of the chats that are unread right now. |
+| `qm.chats.markRead(chatId)` | `markRead` | 1.87.2 | Sets your read marker to the chat's newest message; `true` when it worked. |
+| `qm.chats.markAllRead()` | `markRead` | 1.87.2 | Marks every unread chat as read; returns how many. |
+| `qm.people.list()` | `people` | 1.87.2 | `[{uid, name, you}]` for the open chat (waits up to 3 s while the chat loads). |
+| `qm.theme.get()` | `theme` | 1.87.2 | `{mode: "system"\|"light"\|"dark", dark, accent, midnight, material, colors}`. |
+| `qm.theme.set({mode?, accent?, midnight?})` | `theme` | 1.87.2 | `mode` as above, `accent` like `"#e11d48"` (or `""` for the default), `midnight` true/false. Changes the real settings at once, everywhere. |
+| `qm.nav.open(link)` | `nav` | 1.87.2 | `link`: `"qm:chat/ID"`, `"qm:message/CHAT/KEY"`, `"qm:settings/appearance"`, `"qm:page/NAME"`. Rejects anything else (calls, websites). |
 
 ### Messages (needs `messages`: the messages loaded in the open chat)
 
@@ -267,6 +278,7 @@ Handlers get one object. Errors in a handler are caught and written to the log.
 | `menu-click` | `menu` | 1.49.0 | `{id, message}`; `message.text` only with `messages` too. |
 | `trigger-pick` | `triggers` | 1.82.0 | `{id, char, label, value, chatId}` |
 | `settings-change` | none | 1.84.0 | `{values}` |
+| `chat-added` / `chat-removed` | `watchChatList` | 1.87.2 | `{chatId, title}` when a chat joins or leaves your list (not for the chats loaded at start). |
 | `message-edited` | `watchEdits` | 1.85.0 | `{chatId, key, fromMe, type, time, editedAt, text, oldText}` for the open chat. `text` / `oldText` are `null` without `messages`. |
 | `message-deleted` | `watchDeletes` | 1.85.0 | `{chatId, key, fromMe, type, time, text}`; only messages already shown. `text` is the last text seen, only with `messages`. |
 | `chat-message` | `watchMessages` | 1.86.0 | `{chatId, title, key, fromMe, fromName, type, time, text}` for a new message in any chat (not the history at start). `text` is `null` without `messages`. |
@@ -452,5 +464,6 @@ The API number stays **1**: every addition so far is optional, so a plugin only 
 | 1.84.0 | `say`, `beforeSend`; `qm.messages.say`, `qm.beforeSend`, `qm.settings.*`; event `settings-change`. Plugins got their own Settings tab, work with Developer mode off, grouped permissions. |
 | 1.85.0 | `watchEdits`, `watchDeletes`; events `message-edited`, `message-deleted`. |
 | 1.86.0 | `watchMessages`, `typing`, `unread`, `watchReads`, `watchCalls`; events `chat-message`, `typing`, `unread-change`, `message-read`, `incoming-call`; `qm.chats.unread()`. |
+| 1.87.2 | `theme`, `nav`, `people`, `watchChatList`, `markRead`; `qm.theme`, `qm.nav`, `qm.people`, `qm.chats.markRead / markAllRead`; events `chat-added`, `chat-removed`. |
 
 *Keeping this current:* when you add a permission, call or event, add it to the tables above with its **Since** version and a line in section 13, then run `python3 tools/build-docs.py`.

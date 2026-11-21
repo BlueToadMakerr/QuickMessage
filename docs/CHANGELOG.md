@@ -2,6 +2,15 @@
 
 Newest first. Older rounds (1–43) are kept below exactly as they were written.
 
+## 1.87.2 — five more plugin permissions
+
+- **`theme`** (`qm.theme.get / set`): read and change light / dark / system, accent colour and Midnight (your real settings, so they stay).
+- **`nav`** (`qm.nav.open`): open a page, settings tab, chat or message for you; never a call or a website.
+- **`people`** (`qm.people.list`): who is in the open chat.
+- **`watchChatList`** (events `chat-added`, `chat-removed`): your chat list gained or lost a chat.
+- **`markRead`** (`qm.chats.markRead / markAllRead`): mark chats as read (the other people see it).
+- Each has a plain-words explanation in the permission review and sits in its group; `docs/PLUGINS.md` and the generated `plugin-docs.html` list them with their Since version (1.87.2).
+
 ## 1.87.1 — plugin and bot docs rewritten, now generated from Markdown
 
 - `docs/PLUGINS.md` is a complete rewrite that matches how plugins work now: the Plugins tab and its buttons, grouped permission review, plugin settings, working without Developer mode, hidden logs, every permission / call / event in tables with a **Since** site version (so `minSite` stays correct), limits, troubleshooting and the full version history.

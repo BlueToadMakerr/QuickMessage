@@ -14,6 +14,11 @@ export const PERMISSIONS = {
   triggers: { label: "Add pop-up lists for special characters (/ @ # …) in the message box", risk: "low" },
   say:      { label: "Show its own messages in your chats (only you see them; nothing is sent)", risk: "medium" },
   beforeSend: { label: "Change your messages right before they are sent (or stop them)", risk: "high" },
+  theme: { label: "Read and change your theme (light / dark, accent colour)", risk: "medium" },
+  nav: { label: "Open pages, settings and chats for you", risk: "low" },
+  people: { label: "See who is in the open chat", risk: "medium" },
+  watchChatList: { label: "Know when you get a new chat or one disappears", risk: "low" },
+  markRead: { label: "Mark your chats as read", risk: "medium" },
   watchMessages: { label: "Know when a new message arrives in any of your chats", risk: "medium" },
   typing: { label: "Know when people are typing in your chats", risk: "low" },
   unread: { label: "Know which chats are unread, and when that changes", risk: "low" },
@@ -45,9 +50,9 @@ export const PERMISSIONS = {
 };
 /** Permissions in groups, in the order they are listed in reviews and in the editor. */
 export const PERM_GROUPS = [
-  { id: "look", label: "Look & feel", hint: "Colours, buttons, windows, messages on screen", perms: ["style", "messageView", "panel", "buttons", "ui", "toast", "notify", "badge", "sound", "speech"] },
-  { id: "read", label: "Reading your chats", hint: "What the plugin can see", perms: ["me", "chat", "messages", "watchMessages", "watchEdits", "watchDeletes", "typing", "unread", "watchReads", "watchCalls", "calls", "devinfo"] },
-  { id: "write", label: "Writing & sending", hint: "Putting text in chats, editing or deleting your messages", perms: ["say", "commands", "triggers", "keys", "menu", "send", "beforeSend", "editOwn", "deleteOwn"] },
+  { id: "look", label: "Look & feel", hint: "Colours, buttons, windows, messages on screen", perms: ["style", "messageView", "panel", "buttons", "ui", "toast", "notify", "badge", "sound", "speech", "theme", "nav"] },
+  { id: "read", label: "Reading your chats", hint: "What the plugin can see", perms: ["me", "chat", "messages", "people", "watchChatList", "watchMessages", "watchEdits", "watchDeletes", "typing", "unread", "watchReads", "watchCalls", "calls", "devinfo"] },
+  { id: "write", label: "Writing & sending", hint: "Putting text in chats, editing or deleting your messages", perms: ["say", "markRead", "commands", "triggers", "keys", "menu", "send", "beforeSend", "editOwn", "deleteOwn"] },
   { id: "device", label: "Your device & sharing", hint: "Clipboard, files, links, downloads", perms: ["clipboard", "share", "download", "files", "links"] },
   { id: "power", label: "Network & control", hint: "Contacting other websites, controlling the page", perms: ["network", "page"] },
   { id: "danger", label: "Danger zone", hint: "Full access", perms: ["unsandboxed"] }
@@ -110,6 +115,11 @@ export const PERM_INFO = {
   style: "Can restyle the whole site (colours, fonts, hide parts). It cannot read anything.",
   me: "Can see your display name and your account id (UID).",
   chat: "Knows which chat you have open and can put text into your message box (it cannot send it).",
+  theme: "Can see whether you use light, dark or system, your accent colour and Midnight setting, and can change them. Changes stay (they are your real settings) until you change them back.",
+  nav: "Can open a page, a settings tab or a chat for you (like tapping a QuickMessage link). It cannot start or join a call.",
+  people: "Can see the names of the people in the chat you have open.",
+  watchChatList: "Gets told when a chat is added to or removed from your chat list (which chat and its name).",
+  markRead: "Can mark one of your chats, or all of them, as read. That also tells the other people you have read their messages.",
   watchMessages: "Gets told when a new message arrives in ANY of your chats, not just the open one: which chat, who sent it and when. It also gets the text only if it holds the \"messages\" permission too.",
   typing: "Gets told when someone starts or stops typing in any of your chats (which chat and who).",
   unread: "Can ask which chats are unread and is told when a chat becomes unread or is read. It sees chat names, not message text.",

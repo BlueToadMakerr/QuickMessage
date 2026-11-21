@@ -166,8 +166,8 @@ function loadChats(uid) {
     cachedIds = new Set(hit.v); endSync = beginSync("chats"); hit.v.forEach(id => attachChat(uid, id)); schedule();
   }).catch(() => {});
   const saveIds = () => { clearTimeout(saveIds.t); saveIds.t = setTimeout(() => { if (listState === "ready" && currentUid === uid) ocSet("ids:" + uid, [...chats.keys()]); }, 1500); };
-  globalUnsubs.push(onChildAdded(listRef, snap => { attachChat(uid, snap.key); saveIds(); }, fail));
-  globalUnsubs.push(onChildRemoved(listRef, snap => { detachChat(snap.key); saveIds(); }));
+  globalUnsubs.push(onChildAdded(listRef, snap => { const fresh = listState === "ready" && !chats.has(snap.key); Promise.resolve(attachChat(uid, snap.key)).then(async () => { for (let i = 0; i < 25 && chats.has(snap.key) && !chats.get(snap.key).settled; i++) await new Promise(r => setTimeout(r, 150)); if (fresh && chats.has(snap.key)) listEvent("chat-added", snap.key, chatTitle(chats.get(snap.key))); }); saveIds(); }, fail));
+  globalUnsubs.push(onChildRemoved(listRef, snap => { const had = chats.get(snap.key), title = had ? chatTitle(had) : ""; detachChat(snap.key); if (had && listState === "ready") listEvent("chat-removed", snap.key, title); saveIds(); }));
   get(listRef).then(s => {
     listState = "ready";
     const real = new Set(Object.keys(s.val() || {}));
@@ -298,6 +298,14 @@ async function tellPlugins(event, s, last) {
     QM.plugins.emit(event, { chatId: s.id, title: chatTitle(s), key: last.id || null, fromMe, fromName: fromMe ? "You" : (p && p.displayName) || "", text: typeof text === "string" ? text.slice(0, 2000) : null, type: last.type || "text", time: last.timestamp || null });
   } catch (_) { /* a plugin must never break the chat list */ }
 }
+const listEvent = (name, chatId, title) => { try { QM.plugins.emit(name, { chatId, title }); } catch (_) { /* a plugin must never break the chat list */ } };
+/** For plugins with "markRead": mark one chat (or, with null, every unread chat) as read; returns true / how many. */
+window.__qmMarkRead = async id => {
+  const one = async s => { if (!s || !s.last || !s.last.id) return false; await set(ref(db, `privateChats/${s.id}/messageRead/${currentUid}`), s.last.id); return true; };
+  if (id) return one(chats.get(id));
+  let n = 0; for (const s of [...chats.values()]) if (s.participants && isUnread(s) && await one(s)) n++;
+  return n;
+};
 const unreadSeen = new Map();
 const isUnread = s => !!(s.last && s.last.fromUid && s.last.fromUid !== currentUid && s.last.id && String(s.readKey) !== String(s.last.id));
 window.__qmUnread = () => [...chats.values()].filter(s => s.participants && s.last && isUnread(s)).map(s => ({ id: s.id, title: chatTitle(s) }));

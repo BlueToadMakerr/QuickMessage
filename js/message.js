@@ -337,6 +337,7 @@ function buildEvent(key, msg) {
   return el;
 }
 // ---------- @mentions (see js/mentions.js) ----------
+window.__qmPeople = () => participants.map(u => { const p = peekProfile(u); return { uid: u, name: (p && p.displayName) || "", you: u === me }; });
 const peopleNow = () => participants.filter(u => u !== me).map(u => { const p = peekProfile(u); return p && p.displayName ? { uid: u, name: p.displayName, pfp: p.pfp } : null; }).filter(Boolean);
 function mentionPeople(msg) {
   const ids = msg.mentions && typeof msg.mentions === "object" ? Object.keys(msg.mentions) : [];
